@@ -6,9 +6,10 @@ from cryptography.hazmat.backends import default_backend
 from typing import Literal
 from dotenv import load_dotenv
 from openai import OpenAI, AsyncOpenAI
-import google.generativeai as genai
+from google import genai
 
 from .config_loader import load_api_key
+
 
 ChatGPTModel = Literal["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-preview", "o3-mini"]
 GeminiModel = Literal["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
@@ -41,10 +42,13 @@ def _ask_chatgpt(api_key: str, prompt: str, model_name: ChatGPTModel):
 
 @encap_text_with_title_decorator("GEMINI", '\'\'\'\'\'\'')
 def _ask_gemini(api_key: str, prompt: str, model_name: GeminiModel):
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
-    resp = model.generate_content(prompt)
+    client = genai.Client(api_key=api_key)
+    resp = client.models.generate_content(
+        model=model_name,
+        contents=prompt
+    )
     return resp.text.strip()
+
 
 
 
@@ -76,9 +80,11 @@ def ask_chatgpt(prompt: str, model_name: ChatGPTModel = "gpt-4.1", password: str
 @encap_text_with_title_decorator("GEMINI", '\'\'\'\'\'\'')
 def ask_gemini(prompt: str, model_name: GeminiModel = "gemini-2.5-flash-lite", password: str = None):
     gemini_api = load_api_key(tag="gemini")
-    gemini_api = _decode_aes(gemini_api, password) if password is not None else gemini_api
-    genai.configure(api_key=gemini_api)
-    model = genai.GenerativeModel(model_name)
-    resp = model.generate_content(prompt)
+    gemini_api = _decode_aes(gemini_api, password) if password else gemini_api
+    client = genai.Client(api_key=gemini_api)
+    resp = client.models.generate_content(
+        model=model_name,
+        contents=prompt
+    )
     return resp.text.strip()
 

@@ -104,3 +104,8 @@ def load_api_key(
         )
 
     return value
+
+
+if __name__ == "__main__":
+    print(load_api_key(tag="chatgpt"))
+    print(load_api_key(tag="gemini"))
