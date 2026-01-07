@@ -1,11 +1,9 @@
-
-
 # 使用說明書教學
 
-## 安裝
+## 安裝指令
 ### 一、我只是使用者
 ```commandline
-pip install ntu-easy-llm.whl
+pip install ntu_easy_llm-0.1.0-py3-none-any.whl
 ```
 ### 二、我在一起開發
 ```commandline
