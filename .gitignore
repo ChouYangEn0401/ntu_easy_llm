@@ -1,0 +1,47 @@
+# Byte-compiled files
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment directories
+venv/
+env/
+.venv/
+.ENV/
+
+# PyCharm project files
+.idea/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Python-specific files
+*.log
+*.pot
+*.pyc
+
+# C extensions
+*.so
+
+# Test and coverage
+.coverage
+*.coveragerc
+nosetests.xml
+coverage.xml
+*.hypothesis/
+
+# PyInstaller
+*.spec
+
+# mypy
+.mypy_cache/
+
+# jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings (if you're using VS Code alongside PyCharm)
+.vscode/
