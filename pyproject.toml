@@ -5,13 +5,38 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ntu-easy-llm"
 version = "0.1.0"
-description = "Internal NTU LLM utilities"
+description = "Unified ChatGPT / Gemini utility wrapper / (future) Internal NTU LLM utilities"
 readme = "README.md"
-requires-python = ">=3.9"
-dependencies = []
+requires-python = ">=3.11.9"
+license = { text = "MIT" }
+authors = [
+    { name = "周暘恩", email = "chouyangen0401@ntu.edu.tw" },
+    { name = "Anthony Chou", email = "mi.anthony.chou@gmail.com" },
+]
+dependencies = [
+    "openai>=2.0.0",
+    "google-genai>=1.0.0",
+    "cryptography>=42.0.0",
+    "python-dotenv>=1.0.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+# 安裝方式 pip install ntu-easy-llm[dev]
+dev = [
+    "pytest>=7.0",
+    "black>=24.0",
+]
+# 安裝方式 pip install ntu-easy-llm[claude]
+claude = [
+    "anthropic>=0.25.0",
+]
+
+[project.scripts]
+# 搭配 cli 指令使用 顯示版本
+ntu_easy_llm = "ntu_easy_llm.cli:main"
