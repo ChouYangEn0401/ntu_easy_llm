@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ntu-easy-llm"
-version = "0.1.0"
+version = "0.1.1"
 description = "Unified ChatGPT / Gemini utility wrapper / (future) Internal NTU LLM utilities"
 readme = "README.md"
-requires-python = ">=3.11.9"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
     { name = "周暘恩", email = "chouyangen0401@ntu.edu.tw" },

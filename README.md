@@ -1,5 +1,10 @@
 # 使用說明書教學
 
+## 版本限定
+```commandline
+python 3.11 以上
+```
+
 ## 安裝指令
 ### 一、我只是使用者
 ```commandline
