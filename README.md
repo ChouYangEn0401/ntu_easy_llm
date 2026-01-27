@@ -10,24 +10,180 @@ python 3.11 以上
 ```commandline
 pip install ntu_easy_llm-0.1.0-py3-none-any.whl
 ```
+使用時 import 不用打 src.
 ### 二、我在一起開發
 ```commandline
 pip install -e ../ntu-easy-llm/.
+```
+使用時 import 照下面 需要打 src.
+
+## 環境預備
+請在專案 root folder 下，建立 `.env` 文件，並確保自己的 api-key 有加入
+該文件請 .gitignore 起來
+```text
+gemini=*** gemini api key ***
+chatgpt=*** chatgpt api key ***
+anthropic=*** anthropic api key ***
 ```
 
 ## 代碼範例
 ### 範例一: 簡單訪問服務
 ```python
-from ntu_easy_llm import ask_chatgpt, ask_gemini
+from src.ntu_easy_llm.core.utils import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt("How Are You !!?"))
     print(ask_gemini("How Are You !!?"))
+    print(ask_anthropic("How Are You !!?"))
 ```
 
 ### 範例二: 挑選模型
-![chatgpt_models.png](docs/chatgpt_models.png)
-![gemini_models.png](docs/gemini_models.png)
+```python
+from src.ntu_easy_llm.core.utils import ask_chatgpt, ask_gemini, ask_anthropic
+
+if __name__ == "__main__":
+    print(ask_chatgpt(
+        "This is the AI era. How can people use these tools to enrich their lives?",
+        model_name="gpt-5.2-pro"
+    ))
+
+    print(ask_gemini(
+        "What are the best recent movies in Taiwan?",
+        model_name="gemini-2.5-flash-lite"
+    ))
+
+    print(ask_anthropic(
+        "Provide a C++ template for a Player Manager system in Unreal Engine.",
+        model_name="claude-sonnet-4-5-20250929"
+    ))
+```
+### 範例三: 透過 adapter 自行讀取特定 api-key
+```python
+from src.ntu_easy_llm.core.config_loader import load_api_key
+from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+
+if __name__ == "__main__":
+    prompt = "How are you?"
+
+    chatgpt = ChatGPTAdapter(
+        api_key=load_api_key(tag="chatgpt"),
+        model_name="gpt-4.1"
+    )
+
+    gemini = GeminiAdapter(
+        api_key=load_api_key(tag="gemini"),
+        model_name="gemini-2.5-flash-lite"
+    )
+
+    anthropic = AnthropicAdapter(
+        api_key=load_api_key(tag="anthropic"),
+        model_name="claude-sonnet-4-5-20250929"
+    )
+
+    print(chatgpt.ask(prompt))
+    print(gemini.ask(prompt))
+    print(anthropic.ask(prompt))
+```
+```text
+CHATGPT
+''''''
+I'm doing well, thank you! How are you? How can I assist you today? 😊
+''''''
+
+GEMINI
+''''''
+I am doing well, thank you for asking! As a large language model, I don't experience feelings or emotions in the same way humans do. However, I am functioning optimally and ready to assist you.
+
+How are **you** doing today? I hope you're having a good one!
+''''''
+
+ANTHROPIC
+''''''
+I'm doing well, thank you for asking! I'm here and ready to help with whatever questions or tasks you have in mind. How are you doing today?
+''''''
+
+
+Process finished with exit code 0
+```
+### 範例四: 範例三寫法 如何轉換為等價 key-material + adapter 寫法
+```python
+from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
+from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
+from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+
+if __name__ == "__main__":
+    prompt = "How are you?"
+    decode_strategy = PlainTextStrategy()
+
+    # ---- Key Materials ----
+    gemini_key = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="gemini"),
+        decryptor=decode_strategy,  # Plain key
+    ).resolve()
+
+    chatgpt_key = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="chatgpt"),
+        decryptor=decode_strategy,  # Plain key
+    ).resolve()
+
+    anthropic_key = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="anthropic"),
+        decryptor=decode_strategy,  # Plain key
+    ).resolve()
+
+    # ---- Adapters ----
+    gemini = GeminiAdapter(gemini_key, "gemini-2.5-flash-lite")
+    chatgpt = ChatGPTAdapter(chatgpt_key, "gpt-4.1")
+    anthropic = AnthropicAdapter(anthropic_key, "claude-sonnet-4-5-20250929")
+
+    # ---- Ask ----
+    print(gemini.ask(prompt))
+    print(chatgpt.ask(prompt))
+    print(anthropic.ask(prompt))
+```
+### \[開發中...] 範例五: 透過  key-material + adapter 寫法，自行讀取特定 api-key 並同時提供不同解密手法
+```python
+from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
+from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
+from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+
+if __name__ == "__main__":
+    prompt = "How are you?"
+    decode_strategy = PlainTextStrategy()
+
+    # ---- Key Materials ----
+    gemini_key = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="GEMINI_API_KEY"),
+        decryptor=RSADecryptStrategy(env_password_tag="RSA_PRIVATE_KEY_PEM"),
+    ).resolve()  # RSA encrypted key + password also from env
+
+    gemini_key_free = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="GEMINI_API_KEY"),
+        decryptor=decode_strategy,  # Plain key
+    ).resolve()
+
+    chatgpt_key = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="CHATGPT_API_KEY"),
+        decryptor=decode_strategy,  # Plain key
+    ).resolve()
+
+    anthropic_key = KeyMaterial(
+        provider=EnvKeyProvider(env_password_tag="ANTHROPIC_API_KEY"),
+        decryptor=AESDecryptStrategy(env_password_tag="AES_PASSWORD"),  # AES 密碼從 env
+    ).resolve()  # AES encrypted key + password also from env
+
+    # ---- Adapters ----
+    gemini = GeminiAdapter(gemini_key, "gemini-2.5-flash-lite")
+    chatgpt_free = ChatGPTAdapter(gemini_key_free, "gpt-5.2-pro")
+    chatgpt = ChatGPTAdapter(chatgpt_key, "gpt-4.1")
+    anthropic = AnthropicAdapter(anthropic_key, "claude-sonnet-4-5-20250929")
+
+    # ---- Ask ----
+    print(gemini.ask(prompt))
+    print(chatgpt_free.ask(prompt))
+    print(chatgpt.ask(prompt))
+    print(anthropic.ask(prompt))
+```
 
 ## 模型選擇
 

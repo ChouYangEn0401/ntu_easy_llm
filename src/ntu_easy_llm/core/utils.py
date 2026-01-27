@@ -1,17 +1,13 @@
-import base64
-from functools import wraps
+from abc import ABC, abstractmethod
 from typing import Literal, Union
-
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
 
 from openai import OpenAI
 from google import genai
 from anthropic import Anthropic
 
 from .config_loader import load_api_key
-
+from .decorators import encap_text_with_title_decorator
+from .cryptions import _decode_aes
 
 # =======================
 # Model Literals (官方可直接使用)
@@ -38,7 +34,7 @@ GeminiModel = Literal[
     # "gemini-3-flash",
 ]
 
-ClaudeModel = Literal[
+AnthropicModel = Literal[
     "claude-opus-4-5-20251101",    # 最新 flagship
     "claude-sonnet-4-5-20250929",  # 主推通用版本
     "claude-haiku-4-5-20251001",   # 快速輕量
@@ -50,7 +46,7 @@ ClaudeModel = Literal[
     "claude-3-7-sonnet-20250219",  # 可選 3.7 family
 ]
 
-AnyModel = Union[ChatGPTModel, GeminiModel, ClaudeModel]
+AnyModel = Union[ChatGPTModel, GeminiModel, AnthropicModel]
 
 
 # =========================
@@ -58,7 +54,7 @@ AnyModel = Union[ChatGPTModel, GeminiModel, ClaudeModel]
 # =========================
 
 def ask(
-    service_provider: Literal["CHATGPT", "GEMINI", "CLAUDE"],
+    service_provider: Literal["CHATGPT", "GEMINI", "ANTHROPIC"],
     api_key: str,
     prompt: str,
     model_name: AnyModel,
@@ -67,33 +63,10 @@ def ask(
         return _ask_chatgpt(api_key, prompt, model_name)   # type: ignore
     elif service_provider == "GEMINI":
         return _ask_gemini(api_key, prompt, model_name)    # type: ignore
-    elif service_provider == "CLAUDE":
+    elif service_provider == "ANTHROPIC":
         return _ask_anthropic(api_key, prompt, model_name) # type: ignore
     else:
         raise ValueError(f"Unsupported service provider: {service_provider}")
-
-
-# =========================
-# Text Encapsulation Utils
-# =========================
-
-def encap_text(title: str, content: str, seperator: str = '```') -> str:
-    return f"{title}\n{seperator}\n{content}\n{seperator}\n"
-
-def encap_text_decorator(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        return encap_text("", func(*args, **kwargs))
-    return wrapper
-
-
-def encap_text_with_title_decorator(title: str, separator: str = "```"):
-    def _decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            return encap_text(title, func(*args, **kwargs), separator)
-        return wrapper
-    return _decorator
 
 # =========================
 # Provider Implementations
@@ -120,7 +93,7 @@ def _ask_gemini(api_key: str, prompt: str, model_name: GeminiModel):
 
 
 @encap_text_with_title_decorator("ANTHROPIC", "''''''")
-def _ask_anthropic(api_key: str, prompt: str, model_name: ClaudeModel):
+def _ask_anthropic(api_key: str, prompt: str, model_name: AnthropicModel):
     client = Anthropic(api_key=api_key)
     model = resolve_claude_model(client, model_name)
     resp = client.messages.create(
@@ -144,32 +117,6 @@ def resolve_claude_model(
     if "claude-haiku-4-5-20251001" in available:
         return "claude-haiku-4-5-20251001"
     raise RuntimeError(f"Request Module `{requested}` Is Not Usable For This API-Key !!\nYour Usable List: {available}")
-
-# =========================
-# AES Decode Utils
-# =========================
-
-def _decode_aes(encoded_content: str, password: str) -> str:
-
-    def _derive_key_iv(password: str):
-        raw = password.encode("utf-8")
-        from hashlib import sha256
-        key = sha256(raw).digest()
-        iv = key[:16]
-        return key, iv
-
-    def _aes_decrypt(enc: str, key: bytes, iv: bytes) -> str:
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        decrypted_padded = decryptor.update(base64.b64decode(enc)) + decryptor.finalize()
-        unpadder = padding.PKCS7(128).unpadder()
-        decrypted = unpadder.update(decrypted_padded) + unpadder.finalize()
-        return decrypted.decode("utf-8")
-
-    key, iv = _derive_key_iv(password)
-    decoded_content = _aes_decrypt(encoded_content, key, iv)
-    return decoded_content
-
 
 # =========================
 # Public APIs (Auto Load Key)
@@ -212,7 +159,7 @@ def ask_gemini(
 @encap_text_with_title_decorator("ANTHROPIC", "''''''")
 def ask_anthropic(
     prompt: str,
-    model_name: ClaudeModel = "claude-haiku-4-5-20251001",
+    model_name: AnthropicModel = "claude-haiku-4-5-20251001",
     password: str | None = None,
 ):
     anthropic_api = load_api_key(tag="anthropic")
@@ -225,4 +172,35 @@ def ask_anthropic(
         messages=[{"role": "user", "content": prompt}]
     )
     return resp.content[0].text.strip()
+
+# =========================
+# Public APIs (Load Specific Key)
+# =========================
+
+class LLMAdapter(ABC):
+    def __init__(self, api_key: str, model_name: AnyModel):
+        self.api_key = api_key
+        self.model_name = model_name
+
+    @abstractmethod
+    def ask(self, prompt: str) -> str:
+        pass
+
+class ChatGPTAdapter(LLMAdapter):
+    def __init__(self, api_key: str, model_name: ChatGPTModel):
+        super().__init__(api_key, model_name)
+    def ask(self, prompt: str) -> str:
+        return _ask_chatgpt(self.api_key, prompt, self.model_name)  # type: ignore
+
+class GeminiAdapter(LLMAdapter):
+    def __init__(self, api_key: str, model_name: GeminiModel):
+        super().__init__(api_key, model_name)
+    def ask(self, prompt: str) -> str:
+        return _ask_gemini(self.api_key, prompt, self.model_name)  # type: ignore
+
+class AnthropicAdapter(LLMAdapter):
+    def __init__(self, api_key: str, model_name: AnthropicModel):
+        super().__init__(api_key, model_name)
+    def ask(self, prompt: str) -> str:
+        return _ask_anthropic(self.api_key, prompt, self.model_name)  # type: ignore
 
