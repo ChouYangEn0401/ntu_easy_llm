@@ -27,9 +27,37 @@ anthropic=*** anthropic api key ***
 ```
 
 ## 代碼範例
+### 所有可以用的 API
+僅需 _**import ntu_easy_llm**_ 就可以直接用的
+
+| 功能分類               | 函數 / 類別                 | 說明                               |
+| ------------------ | ----------------------- |----------------------------------|
+| **載入環境 / API key** | `load_api_key`          | 載入環境變數 env 裡面的 (加密)API key  |
+| **列出可用模型**         | `list_chatgpt_models`   | 顯示可用 ChatGPT 模型列表                |
+|                    | `list_gemini_models`    | 顯示可用 Gemini 模型列表                 |
+|                    | `list_anthropic_models` | 顯示可用 Claude / Anthropic 模型列表     |
+| **主要問答 API**       | `ask_chatgpt`           | 封裝 ChatGPT 問答呼叫                  |
+|                    | `ask_gemini`            | 封裝 Gemini 問答呼叫                   |
+|                    | `ask_anthropic`         | 封裝 Claude / Anthropic 問答呼叫       |
+| **問答 Adapter 模式**  | `ChatGPTAdapter`        | Adapter 封裝 ChatGPT 問答            |
+|                    | `GeminiAdapter`         | Adapter 封裝 Gemini 問答             |
+|                    | `AnthropicAdapter`      | Adapter 封裝 Claude / Anthropic 問答 |
+
+
+### 範例零: 查詢自己的API所有可用模型清單
+```python
+from src.ntu_easy_llm import load_api_key
+from src.ntu_easy_llm import list_chatgpt_models, list_gemini_models, list_anthropic_models
+
+if __name__ == "__main__":
+    print(list_chatgpt_models(load_api_key("chatgpt")))
+    print(list_gemini_models(load_api_key("gemini")))
+    print(list_anthropic_models(load_api_key("anthropic")))
+```
+    
 ### 範例一: 簡單訪問服務
 ```python
-from src.ntu_easy_llm.core.utils import ask_chatgpt, ask_gemini, ask_anthropic
+from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt("How Are You !!?"))
@@ -39,7 +67,7 @@ if __name__ == "__main__":
 
 ### 範例二: 挑選模型
 ```python
-from src.ntu_easy_llm.core.utils import ask_chatgpt, ask_gemini, ask_anthropic
+from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt(
@@ -57,10 +85,11 @@ if __name__ == "__main__":
         model_name="claude-sonnet-4-5-20250929"
     ))
 ```
+
 ### 範例三: 透過 adapter 自行讀取特定 api-key
 ```python
-from src.ntu_easy_llm.core.config_loader import load_api_key
-from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from src.ntu_easy_llm import load_api_key
+from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
@@ -105,11 +134,12 @@ I'm doing well, thank you for asking! I'm here and ready to help with whatever q
 
 Process finished with exit code 0
 ```
+
 ### 範例四: 範例三寫法 如何轉換為等價 key-material + adapter 寫法
 ```python
-from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
-from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
-from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider  ## not yet api release final check
+from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy  ## not yet api release final check
+from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
@@ -141,11 +171,12 @@ if __name__ == "__main__":
     print(chatgpt.ask(prompt))
     print(anthropic.ask(prompt))
 ```
+
 ### \[開發中...] 範例五: 透過  key-material + adapter 寫法，自行讀取特定 api-key 並同時提供不同解密手法
 ```python
-from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
-from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
-from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider  ## not yet api release final check
+from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy  ## not yet api release final check
+from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
