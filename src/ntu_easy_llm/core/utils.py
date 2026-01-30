@@ -119,7 +119,7 @@ def resolve_claude_model(
     raise RuntimeError(f"Request Module `{requested}` Is Not Usable For This API-Key !!\nYour Usable List: {available}")
 
 # =========================
-# Public APIs (Auto Load Key)
+# Public APIs (Asking Service -- Auto Load Key)
 # =========================
 
 @encap_text_with_title_decorator("CHATGPT", "''''''")
@@ -174,7 +174,25 @@ def ask_anthropic(
     return resp.content[0].text.strip()
 
 # =========================
-# Public APIs (Load Specific Key)
+# Public APIs  (Show Available Models List)
+# =========================
+
+def list_chatgpt_models(api_key: str):
+    client = OpenAI(api_key=api_key)
+    models = client.models.list()
+    return [m.id for m in models.data]
+
+def list_gemini_models(api_key: str):
+    client = genai.Client(api_key=api_key)
+    # 取得模型列表
+    models = client.models.list()
+    return [m.name for m in models]
+
+def list_anthropic_models(api_key: str):
+    return [m.id for m in Anthropic(api_key=api_key).models.list().data]
+
+# =========================
+# Public APIs  (Asking Service -- Load Specific Key)
 # =========================
 
 class LLMAdapter(ABC):

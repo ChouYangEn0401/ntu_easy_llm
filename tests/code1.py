@@ -1,4 +1,4 @@
-from src.ntu_easy_llm.core.utils import ask_chatgpt, ask_gemini, ask_anthropic
+from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt("How Are You !!?"))

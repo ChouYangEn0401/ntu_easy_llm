@@ -1,5 +1,5 @@
-from src.ntu_easy_llm.core.config_loader import load_api_key
-from src.ntu_easy_llm.core.utils import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from src.ntu_easy_llm import load_api_key
+from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
