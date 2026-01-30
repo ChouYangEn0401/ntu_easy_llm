@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ntu-easy-llm"
-version = "0.1.1"
-description = "Unified ChatGPT / Gemini utility wrapper / (future) Internal NTU LLM utilities"
+version = "0.1.2"
+description = "Cross-LLM wrapper for ChatGPT, Gemini, Anthropic with API, model listing, and adapter support"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -16,6 +16,7 @@ authors = [
 dependencies = [
     "openai>=2.0.0",
     "google-genai>=1.0.0",
+    "anthropic>=0.25.0",
     "cryptography>=42.0.0",
     "python-dotenv>=1.0.0",
 ]
@@ -32,9 +33,8 @@ dev = [
     "pytest>=7.0",
     "black>=24.0",
 ]
-# 安裝方式 pip install ntu-easy-llm[claude]
+# 安裝方式 pip install ntu-easy-llm[qwen]
 claude = [
-    "anthropic>=0.25.0",
 ]
 
 [project.scripts]
