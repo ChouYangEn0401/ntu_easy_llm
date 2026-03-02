@@ -1,3 +1,8 @@
+"""Decorators for output formatting and text encapsulation.
+
+Provides decorators to wrap API responses with title headers
+and visual separators for better readability in CLI output.
+"""
 from functools import wraps
 
 # =========================

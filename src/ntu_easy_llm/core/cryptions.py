@@ -1,3 +1,13 @@
+"""Encryption and decryption strategies for secure API key storage.
+
+Provides multiple approaches to handle API keys:
+- PlainTextStrategy: Store keys directly in .env (simple)
+- AESDecryptStrategy: Encrypt keys with password (better security)
+- RSADecryptStrategy: Asymmetric encryption for keys (enterprise)
+
+Uses composition pattern with KeyProvider and KeyDecryptStrategy
+for flexible, extensible key management.
+"""
 import os
 from abc import ABC, abstractmethod
 import base64
@@ -7,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 from cryptography.hazmat.primitives import padding as aes_padding
 from cryptography.hazmat.backends import default_backend
 
-from src.ntu_easy_llm.core.config_loader import load_api_key
+from .config_loader import load_api_key
 
 
 # =========================

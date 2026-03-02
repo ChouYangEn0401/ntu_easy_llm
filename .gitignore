@@ -32,6 +32,7 @@ dist/
 *.coveragerc
 nosetests.xml
 coverage.xml
+.pytest_cache/
 *.hypothesis/
 
 # PyInstaller
@@ -39,9 +40,27 @@ coverage.xml
 
 # mypy
 .mypy_cache/
+.dmypy.json
+dmypy.json
 
 # jupyter notebooks checkpoints
 .ipynb_checkpoints/
 
 # VS Code settings (if you're using VS Code alongside PyCharm)
 .vscode/
+
+# Environment variables (CRITICAL: API keys must NEVER be in version control)
+.env
+.env.local
+.env.*.local
+*.env
+chatgpt_local.env
+gemini_local.env
+anthropic_local.env
+
+# Old releases (keep on PyPI, not in git history)
+old_release/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

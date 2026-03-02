@@ -1,3 +1,11 @@
+"""Core utilities for unified LLM API access.
+
+This module provides:
+- Compatible request/response interfaces for ChatGPT, Gemini, and Anthropic
+- Model type hints for type-safe API calls
+- Adapter pattern for service provider flexibility
+- Automatic API key loading from environment
+"""
 from abc import ABC, abstractmethod
 from typing import Literal, Union
 

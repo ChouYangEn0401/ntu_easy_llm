@@ -1,3 +1,14 @@
+"""Configuration and environment file loading utilities.
+
+Provides smart .env file discovery that works across different Python
+environments (venv, PyInstaller exe, Docker, etc.) and loads API keys
+from environment variables with proper error handling.
+
+Key features:
+- Automatic .env file discovery (walks up directory tree)
+- Support for PyInstaller executables
+- Clear error messages when keys are missing
+"""
 from __future__ import annotations
 import sys
 from pathlib import Path
