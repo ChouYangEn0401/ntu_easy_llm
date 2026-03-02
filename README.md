@@ -6,16 +6,20 @@ python 3.11 以上
 ```
 
 ## 安裝指令
-### 一、我只是使用者
+### 一、我只是一般API套件使用者，單純想要功能可以跑
 ```commandline
 pip install ntu_easy_llm-0.1.0-py3-none-any.whl
 ```
 使用時 import 不用打 src.
-### 二、我在一起開發
+### 二、我是該套件的合作開發人員，我是團隊一員或者fork某部分並想加入自己的更動
 ```commandline
 pip install -e ../ntu-easy-llm/.
 ```
-使用時 import 照下面 需要打 src.
+使用時，請依照資料夾路徑正確 import
+開發結束後，請到乾淨的資料夾做測試再打包
+```bash
+python -c "from ntu_easy_llm import ask_chatgpt; print(ask_chatgpt('test'))"
+```
 
 ## 環境預備
 請在專案 root folder 下，建立 `.env` 文件，並確保自己的 api-key 有加入
@@ -46,8 +50,8 @@ anthropic=*** anthropic api key ***
 
 ### 範例零: 查詢自己的API所有可用模型清單
 ```python
-from src.ntu_easy_llm import load_api_key
-from src.ntu_easy_llm import list_chatgpt_models, list_gemini_models, list_anthropic_models
+from ntu_easy_llm import load_api_key
+from ntu_easy_llm import list_chatgpt_models, list_gemini_models, list_anthropic_models
 
 if __name__ == "__main__":
     print(list_chatgpt_models(load_api_key("chatgpt")))
@@ -57,7 +61,7 @@ if __name__ == "__main__":
     
 ### 範例一: 簡單訪問服務
 ```python
-from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
+from ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt("How Are You !!?"))
@@ -67,7 +71,7 @@ if __name__ == "__main__":
 
 ### 範例二: 挑選模型
 ```python
-from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
+from ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt(
@@ -88,15 +92,15 @@ if __name__ == "__main__":
 
 ### 範例三: 透過 adapter 自行讀取特定 api-key
 ```python
-from src.ntu_easy_llm import load_api_key
-from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from ntu_easy_llm import load_api_key
+from ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
 
     chatgpt = ChatGPTAdapter(
         api_key=load_api_key(tag="chatgpt"),
-        model_name="gpt-4.1"
+        model_name="gpt-4o-mini"
     )
 
     gemini = GeminiAdapter(
@@ -137,9 +141,9 @@ Process finished with exit code 0
 
 ### 範例四: 範例三寫法 如何轉換為等價 key-material + adapter 寫法
 ```python
-from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider  ## not yet api release final check
-from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy  ## not yet api release final check
-from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
+from ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
+from ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
@@ -174,9 +178,9 @@ if __name__ == "__main__":
 
 ### \[開發中...] 範例五: 透過  key-material + adapter 寫法，自行讀取特定 api-key 並同時提供不同解密手法
 ```python
-from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider  ## not yet api release final check
-from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy  ## not yet api release final check
-from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
+from ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
+from ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
