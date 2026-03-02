@@ -1,35 +1,51 @@
 # 使用說明書教學
 
 ## 版本限定
-```commandline
+
+```bash
 python 3.11 以上
 ```
 
+---
+
 ## 安裝指令
-### 一、我只是使用者
-```commandline
+### 一、一般 API 套件使用者（單純想跑功能）
+```bash
 pip install ntu_easy_llm-0.1.0-py3-none-any.whl
 ```
-使用時 import 不用打 src.
-### 二、我在一起開發
-```commandline
+使用時 import 不用打 `src.`
+
+### 二、合作開發人員 / fork 並修改
+```bash
 pip install -e ../ntu-easy-llm/.
 ```
-使用時 import 照下面 需要打 src.
+使用時請依照資料夾路徑正確 import。
+
+開發結束後，請到乾淨資料夾做測試再打包：
+
+```bash
+python -c "from ntu_easy_llm import ask_chatgpt; print(ask_chatgpt('test'))"
+```
 
 ## 環境預備
-請在專案 root folder 下，建立 `.env` 文件，並確保自己的 api-key 有加入
-該文件請 .gitignore 起來
-```text
+請在專案 root folder 下建立 `.env` 文件，並加入 API key。  
+請記得加入 `.gitignore`。
+
+```env
 gemini=*** gemini api key ***
 chatgpt=*** chatgpt api key ***
 anthropic=*** anthropic api key ***
 ```
+---
 
-## 代碼範例
-### 所有可以用的 API
-僅需 _**import ntu_easy_llm**_ 就可以直接用的
 
+# 代碼範例
+## 所有可以用的 API
+僅需：
+```python
+import ntu_easy_llm
+```
+## 範例零：查詢自己的 API 可用模型清單
 | 功能分類               | 函數 / 類別                 | 說明                               |
 | ------------------ | ----------------------- |----------------------------------|
 | **載入環境 / API key** | `load_api_key`          | 載入環境變數 env 裡面的 (加密)API key  |
@@ -42,22 +58,21 @@ anthropic=*** anthropic api key ***
 | **問答 Adapter 模式**  | `ChatGPTAdapter`        | Adapter 封裝 ChatGPT 問答            |
 |                    | `GeminiAdapter`         | Adapter 封裝 Gemini 問答             |
 |                    | `AnthropicAdapter`      | Adapter 封裝 Claude / Anthropic 問答 |
-
-
+---
 ### 範例零: 查詢自己的API所有可用模型清單
 ```python
-from src.ntu_easy_llm import load_api_key
-from src.ntu_easy_llm import list_chatgpt_models, list_gemini_models, list_anthropic_models
+from ntu_easy_llm import load_api_key
+from ntu_easy_llm import list_chatgpt_models, list_gemini_models, list_anthropic_models
 
 if __name__ == "__main__":
     print(list_chatgpt_models(load_api_key("chatgpt")))
     print(list_gemini_models(load_api_key("gemini")))
     print(list_anthropic_models(load_api_key("anthropic")))
 ```
-    
-### 範例一: 簡單訪問服務
+
+## 範例一：簡單訪問服務
 ```python
-from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
+from ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt("How Are You !!?"))
@@ -65,9 +80,9 @@ if __name__ == "__main__":
     print(ask_anthropic("How Are You !!?"))
 ```
 
-### 範例二: 挑選模型
+## 範例二：挑選模型
 ```python
-from src.ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
+from ntu_easy_llm import ask_chatgpt, ask_gemini, ask_anthropic
 
 if __name__ == "__main__":
     print(ask_chatgpt(
@@ -86,17 +101,17 @@ if __name__ == "__main__":
     ))
 ```
 
-### 範例三: 透過 adapter 自行讀取特定 api-key
+## 範例三：透過 adapter 自行讀取特定 API Key
 ```python
-from src.ntu_easy_llm import load_api_key
-from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from ntu_easy_llm import load_api_key
+from ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
 
     chatgpt = ChatGPTAdapter(
         api_key=load_api_key(tag="chatgpt"),
-        model_name="gpt-4.1"
+        model_name="gpt-4o-mini"
     )
 
     gemini = GeminiAdapter(
@@ -135,11 +150,11 @@ I'm doing well, thank you for asking! I'm here and ready to help with whatever q
 Process finished with exit code 0
 ```
 
-### 範例四: 範例三寫法 如何轉換為等價 key-material + adapter 寫法
+## 範例四：使用 key-material + adapter 等價寫法
 ```python
-from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider  ## not yet api release final check
-from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy  ## not yet api release final check
-from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
+from ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
+from ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
@@ -174,9 +189,9 @@ if __name__ == "__main__":
 
 ### \[開發中...] 範例五: 透過  key-material + adapter 寫法，自行讀取特定 api-key 並同時提供不同解密手法
 ```python
-from src.ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider  ## not yet api release final check
-from src.ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy  ## not yet api release final check
-from src.ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
+from ntu_easy_llm.core.cryptions import KeyMaterial, EnvKeyProvider
+from ntu_easy_llm.core.cryptions import PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy
+from ntu_easy_llm import GeminiAdapter, ChatGPTAdapter, AnthropicAdapter
 
 if __name__ == "__main__":
     prompt = "How are you?"
@@ -232,7 +247,7 @@ if __name__ == "__main__":
 | **gpt-4-turbo**       | 仍可用的更快版本。 ([OpenAI 平台][1])                                 |
 | **（可選）gpt-3.5-turbo** | 傳統經濟模型（不推薦如果不需要 backwards support）。 ([OpenAI 平台][1])       |
 
-[1]: https://platform.openai.com/docs/models?utm_source=chatgpt.com "Models | OpenAI API"
+🔗 [OpenAI API Models](https://platform.openai.com/docs/models?utm_source=chatgpt.com)
 🔗 [OpenAI 官方模型文件](https://platform.openai.com/docs/models)
 
 ---
@@ -244,7 +259,7 @@ if __name__ == "__main__":
 | **gemini-2.5-flash**      | 能力強＋速度高。 ([Google AI for Developers][2])    |
 | **gemini-2.5-flash-lite** | 經濟快速版本。 ([Google AI for Developers][2])     |
 
-[2]: https://ai.google.dev/gemini-api/docs/models?utm_source=chatgpt.com "Gemini models | Gemini API - Google AI for Developers"
+🔗 [Gemini API Models for Developers](https://ai.google.dev/gemini-api/docs/models?utm_source=chatgpt.com)
 🔗 [Google Gemini 官方文件](https://ai.google.dev/gemini-api/docs/models/gemini)
 
 ---
@@ -262,7 +277,7 @@ if __name__ == "__main__":
 | **claude-3-5-haiku-20241022**  | 3.5 | 3.5 family 輕量版本，部分帳號可用 ([Docs][3])         |
 | **claude-3-7-sonnet-20250219** | 3.7 | 3.7 family Sonnet，200k context ([Docs][3]) |
 
-[3]: https://platform.claude.com/docs/en/about-claude/models/overview?utm_source=chatgpt.com "Models overview - Anthropic"
-[4]: https://platform.claude.com/docs/zh-TW/about-claude/models/overview?utm_source=chatgpt.com "模型概覽 - Claude API Docs"
+🔗 [Models overview - Anthropic](https://platform.claude.com/docs/en/about-claude/models/overview?utm_source=chatgpt.com)
+🔗 [模型概覽 - Claude API Docs](https://platform.claude.com/docs/zh-TW/about-claude/models/overview?utm_source=chatgpt.com)
 🔗 [Anthropic 官方模型文件](https://docs.anthropic.com/claude/docs/models-overview)
 
