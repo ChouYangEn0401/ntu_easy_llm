@@ -83,11 +83,11 @@ def ask(
 @encap_text_with_title_decorator("CHATGPT", "''''''")
 def _ask_chatgpt(api_key: str, prompt: str, model_name: ChatGPTModel):
     client = OpenAI(api_key=api_key)
-    resp = client.responses.create(
+    resp = client.chat.completions.create(
         model=model_name,
-        input=prompt
+        messages=[{"role": "user", "content": prompt}]
     )
-    return resp.output_text.strip()
+    return resp.choices[0].message.content.strip()
 
 
 @encap_text_with_title_decorator("GEMINI", "''''''")
@@ -133,18 +133,18 @@ def resolve_claude_model(
 @encap_text_with_title_decorator("CHATGPT", "''''''")
 def ask_chatgpt(
     prompt: str,
-    model_name: ChatGPTModel = "gpt-4.1",
+    model_name: ChatGPTModel = "gpt-4o-mini",
     password: str | None = None,
 ):
     chatgpt_api = load_api_key(tag="chatgpt")
     chatgpt_api = _decode_aes(chatgpt_api, password) if password else chatgpt_api
 
     client = OpenAI(api_key=chatgpt_api)
-    resp = client.responses.create(
+    resp = client.chat.completions.create(
         model=model_name,
-        input=prompt
+        messages=[{"role": "user", "content": prompt}]
     )
-    return resp.output_text.strip()
+    return resp.choices[0].message.content.strip()
 
 
 @encap_text_with_title_decorator("GEMINI", "''''''")
