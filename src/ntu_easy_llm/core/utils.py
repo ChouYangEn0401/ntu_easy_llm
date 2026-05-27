@@ -30,6 +30,8 @@ ChatGPTModel = Literal[
     "gpt-4.1-mini",
     "gpt-4o",
     "gpt-4o-mini",
+    "gpt-4o-mini-search-preview",   
+    "gpt-4o-search-preview",
     "gpt-4-turbo",
 ]
 
@@ -83,11 +85,12 @@ def ask(
 @encap_text_with_title_decorator("CHATGPT", "''''''")
 def _ask_chatgpt(api_key: str, prompt: str, model_name: ChatGPTModel):
     client = OpenAI(api_key=api_key)
-    resp = client.chat.completions.create(
+    resp = client.responses.create(
         model=model_name,
-        messages=[{"role": "user", "content": prompt}]
+        tools=[{"type":"web_search"}],
+        input=prompt
     )
-    return resp.choices[0].message.content.strip()
+    return resp.output_text.strip()
 
 
 @encap_text_with_title_decorator("GEMINI", "''''''")
@@ -133,18 +136,39 @@ def resolve_claude_model(
 @encap_text_with_title_decorator("CHATGPT", "''''''")
 def ask_chatgpt(
     prompt: str,
-    model_name: ChatGPTModel = "gpt-4o-mini",
+    model_name: ChatGPTModel = "gpt-4.1",
     password: str | None = None,
+
 ):
     chatgpt_api = load_api_key(tag="chatgpt")
     chatgpt_api = _decode_aes(chatgpt_api, password) if password else chatgpt_api
 
     client = OpenAI(api_key=chatgpt_api)
-    resp = client.chat.completions.create(
+    resp = client.responses.create(
         model=model_name,
-        messages=[{"role": "user", "content": prompt}]
+        input=prompt
     )
-    return resp.choices[0].message.content.strip()
+    return resp
+
+def ask_chatgpt_resp(
+    prompt: str,
+    model_name: str = "gpt-5.2",
+    password: str | None = None,
+    #use_web_search: bool = True,     # ✅ 新增
+    #return_response: bool = False,    # ✅ 新增：True 回傳 resp 物件
+):
+    chatgpt_api = load_api_key(tag="chatgpt")
+    chatgpt_api = _decode_aes(chatgpt_api, password) if password else chatgpt_api
+
+    client = OpenAI(api_key=chatgpt_api)
+    resp = client.responses.create(
+        model=model_name,
+        tools=[{"type": "web_search"}],
+        tool_choice="required",  # ⭐ 強制搜尋
+        include=["web_search_call.action.sources"],
+        input=prompt
+    )
+    return resp
 
 
 @encap_text_with_title_decorator("GEMINI", "''''''")
