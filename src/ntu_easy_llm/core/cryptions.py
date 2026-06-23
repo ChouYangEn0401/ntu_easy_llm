@@ -8,7 +8,6 @@ Provides multiple approaches to handle API keys:
 Uses composition pattern with KeyProvider and KeyDecryptStrategy
 for flexible, extensible key management.
 """
-import os
 from abc import ABC, abstractmethod
 import base64
 from cryptography.hazmat.primitives import serialization, hashes
@@ -19,10 +18,46 @@ from cryptography.hazmat.backends import default_backend
 
 from .config_loader import load_api_key
 
+__all__ = [
+    "aes_encrypt",
+    "rsa_encrypt",
+    "KeyProvider",
+    "EnvKeyProvider",
+    "KeyDecryptStrategy",
+    "PlainTextStrategy",
+    "AESDecryptStrategy",
+    "RSADecryptStrategy",
+    "KeyMaterial",
+]
+
 
 # =========================
 # Encode Utils
 # =========================
+
+def aes_encrypt(plain_text: str, password: str) -> str:
+    """AES-CBC encrypt ``plain_text`` with ``password``.
+
+    The output (base64) is what :class:`AESDecryptStrategy` expects to find
+    in your ``.env``. Use this once to produce the value you store:
+
+        >>> aes_encrypt("sk-my-real-key", "my-password")
+        'WnZ4...=='   # paste this into .env, the password goes in another tag
+    """
+    from hashlib import sha256
+
+    key = sha256(password.encode("utf-8")).digest()
+    iv = key[:16]
+
+    padder = aes_padding.PKCS7(128).padder()
+    padded = padder.update(plain_text.encode("utf-8")) + padder.finalize()
+
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+    encrypted = encryptor.update(padded) + encryptor.finalize()
+
+    return base64.b64encode(encrypted).decode("utf-8")
+
 
 def rsa_encrypt(plain_text: str, public_key_pem: str) -> str:
     public_key = serialization.load_pem_public_key(
@@ -75,13 +110,15 @@ class KeyProvider(ABC):
         pass
 
 class EnvKeyProvider(KeyProvider):
-    def __init__(self, env_password_tag: str):
-        self.env_password_tag = env_password_tag
+    """Read a (possibly encrypted) key from the nearest ``.env`` by tag."""
+
+    def __init__(self, tag: str):
+        self.tag = tag
 
     def get(self) -> str:
-        value = load_api_key(self.env_password_tag)
+        value = load_api_key(self.tag)
         if not value:
-            raise RuntimeError(f"Missing env var: {self.env_password_tag}")
+            raise RuntimeError(f"Missing env var: {self.tag}")
         return value
 
 # =========================
@@ -112,7 +149,7 @@ class RSADecryptStrategy(KeyDecryptStrategy):
         self.env_password_tag = env_password_tag
 
     def _load_private_key(self):
-        pem = os.getenv(self.env_password_tag)
+        pem = load_api_key(tag=self.env_password_tag)
         if not pem:
             raise RuntimeError(f"Missing RSA private key env: {self.env_password_tag}")
 
@@ -142,6 +179,26 @@ class RSADecryptStrategy(KeyDecryptStrategy):
 # =========================
 
 class KeyMaterial:
+    """A lazy handle to an API key: *source* (provider) + *how to decrypt* (strategy).
+
+    Constructing a ``KeyMaterial`` touches nothing — no ``.env`` read, no
+    decryption happens until you call :meth:`resolve`. That first-touch boundary
+    is deliberate: build the handle anywhere, pay the cost only when you need
+    the plaintext.
+
+    For the common cases use the named constructors instead of wiring the
+    provider/strategy by hand::
+
+        KeyMaterial.plain("chatgpt").resolve()
+        KeyMaterial.aes("anthropic", "AES_PASSWORD").resolve()
+        KeyMaterial.rsa("gemini", "RSA_PRIVATE_KEY_PEM").resolve()
+
+    The explicit two-argument form stays available for mixing custom providers
+    or strategies::
+
+        KeyMaterial(EnvKeyProvider("anthropic"), AESDecryptStrategy("AES_PASSWORD"))
+    """
+
     def __init__(
         self,
         provider: KeyProvider,
@@ -150,6 +207,22 @@ class KeyMaterial:
         self.provider = provider
         self.decryptor = decryptor
 
+    @classmethod
+    def plain(cls, tag: str) -> "KeyMaterial":
+        """Plaintext key stored in ``.env`` under ``tag`` (no decryption)."""
+        return cls(EnvKeyProvider(tag), PlainTextStrategy())
+
+    @classmethod
+    def aes(cls, tag: str, password_tag: str) -> "KeyMaterial":
+        """AES-encrypted key in ``tag``; password read from ``.env`` tag ``password_tag``."""
+        return cls(EnvKeyProvider(tag), AESDecryptStrategy(password_tag))
+
+    @classmethod
+    def rsa(cls, tag: str, private_key_tag: str) -> "KeyMaterial":
+        """RSA-encrypted key in ``tag``; PEM private key read from ``.env`` tag ``private_key_tag``."""
+        return cls(EnvKeyProvider(tag), RSADecryptStrategy(private_key_tag))
+
     def resolve(self) -> str:
+        """Read the (possibly encrypted) value and return the decrypted plaintext key."""
         raw = self.provider.get()
         return self.decryptor.decrypt(raw)

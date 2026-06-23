@@ -2,7 +2,10 @@
 
 Includes:
 - Config loading and .env file discovery
-- API client abstractions for ChatGPT, Gemini, Anthropic
-- Encryption/decryption strategies for secure API key storage
-- Decorators for output formatting
+- Model name literals (models.py)
+- Response normalisation helpers (response_utils.py)
+- Stateless ask functions and adapter classes (utils.py)
+- Multi-turn session management (session.py)
+- Encryption/decryption strategies for secure API key storage (cryptions.py)
+- Decorators for output formatting (decorators.py)
 """
