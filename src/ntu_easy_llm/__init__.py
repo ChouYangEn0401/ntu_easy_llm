@@ -20,42 +20,93 @@ Quick start
     >>> session = LLMSession("gemini")
     >>> session.ask("My name is Alice.")
     >>> print(session.ask("What is my name?"))
+
+Lazy loading
+------------
+Importing ``ntu_easy_llm`` is cheap: it pulls in *nothing* heavy. Each public
+name is resolved on first access (PEP 562 ``__getattr__``) and then cached, so
+the underlying SDK for a platform is only imported when you actually touch it —
+using just ``KeyMaterial`` never loads ``google-genai`` / ``openai`` / etc.
 """
+from __future__ import annotations
 
-# --- environment / key helpers ---
-from .core.config_loader import load_api_key
+import importlib
+from typing import TYPE_CHECKING
 
-# --- model type literals ---
-from .core.models import AnyModel, AnthropicModel, ChatGPTModel, GeminiModel
-
-# --- response normalisation helpers ---
-from .core.response_utils import (
-    parse_anthropic_response,
-    parse_gemini_response,
-    parse_openai_completion,
-    parse_openai_response,
-)
-
-# --- stateless single-shot ask (blocking) ---
-from .core.utils import ask_anthropic, ask_chatgpt, ask_gemini
-
-# --- stateless single-shot ask (non-blocking) ---
-from .core.utils import ask_anthropic_async, ask_chatgpt_async, ask_gemini_async
-
-# --- unified dispatcher (explicit API key) ---
-from .core.utils import ask
-
-# --- model listing ---
-from .core.utils import list_anthropic_models, list_chatgpt_models, list_gemini_models
-
-# --- adapter classes ---
-from .core.utils import AnthropicAdapter, ChatGPTAdapter, GeminiAdapter, LLMAdapter
-
-# --- multi-turn session ---
-from .core.session import LLMSession
-
-# --- version ---
 from ._version import __version__
+
+# --- public name -> defining submodule (resolved lazily on first access) ---
+_LAZY_SUBMODULES: dict[str, tuple[str, ...]] = {
+    ".core.config_loader": ("load_api_key",),
+    ".core.models": ("AnyModel", "AnthropicModel", "ChatGPTModel", "GeminiModel"),
+    ".core.response_utils": (
+        "parse_anthropic_response",
+        "parse_gemini_response",
+        "parse_openai_completion",
+        "parse_openai_response",
+    ),
+    ".core.utils": (
+        "ask_chatgpt", "ask_gemini", "ask_anthropic",
+        "ask_chatgpt_async", "ask_gemini_async", "ask_anthropic_async",
+        "ask",
+        "list_chatgpt_models", "list_gemini_models", "list_anthropic_models",
+        "LLMAdapter", "ChatGPTAdapter", "GeminiAdapter", "AnthropicAdapter",
+    ),
+    ".core.session": ("LLMSession",),
+    ".core.cryptions": (
+        "KeyMaterial", "EnvKeyProvider",
+        "PlainTextStrategy", "AESDecryptStrategy", "RSADecryptStrategy",
+        "aes_encrypt", "rsa_encrypt",
+    ),
+}
+
+_NAME_TO_MODULE: dict[str, str] = {
+    name: module
+    for module, names in _LAZY_SUBMODULES.items()
+    for name in names
+}
+
+
+def __getattr__(name: str):
+    """Resolve a public name to its submodule on first access, then cache it."""
+    module_path = _NAME_TO_MODULE.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module = importlib.import_module(module_path, __name__)
+    value = getattr(module, name)
+    globals()[name] = value  # cache: subsequent lookups skip __getattr__
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)
+
+
+# --- static analysis only: gives IDEs / mypy the real symbols (never runs) ---
+if TYPE_CHECKING:
+    from .core.config_loader import load_api_key
+    from .core.models import AnyModel, AnthropicModel, ChatGPTModel, GeminiModel
+    from .core.response_utils import (
+        parse_anthropic_response,
+        parse_gemini_response,
+        parse_openai_completion,
+        parse_openai_response,
+    )
+    from .core.utils import (
+        ask_anthropic, ask_chatgpt, ask_gemini,
+        ask_anthropic_async, ask_chatgpt_async, ask_gemini_async,
+        ask,
+        list_anthropic_models, list_chatgpt_models, list_gemini_models,
+        AnthropicAdapter, ChatGPTAdapter, GeminiAdapter, LLMAdapter,
+    )
+    from .core.session import LLMSession
+    from .core.cryptions import (
+        KeyMaterial, EnvKeyProvider,
+        PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy,
+        aes_encrypt, rsa_encrypt,
+    )
+
 
 __all__ = [
     # key management
@@ -99,6 +150,15 @@ __all__ = [
 
     # session
     "LLMSession",
+
+    # secure key management
+    "KeyMaterial",
+    "EnvKeyProvider",
+    "PlainTextStrategy",
+    "AESDecryptStrategy",
+    "RSADecryptStrategy",
+    "aes_encrypt",
+    "rsa_encrypt",
 
     # meta
     "__version__",
