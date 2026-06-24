@@ -30,14 +30,15 @@ version = {attr = "ntu_easy_llm._version.__version__"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Ship the PEP 561 marker so downstream type checkers use our type hints.
+ntu_easy_llm = ["py.typed"]
+
 [project.optional-dependencies]
 # 安裝方式 pip install ntu-easy-llm[dev]
 dev = [
     "pytest>=7.0",
     "black>=24.0",
-]
-# 安裝方式 pip install ntu-easy-llm[qwen]
-claude = [
 ]
 
 [project.scripts]
