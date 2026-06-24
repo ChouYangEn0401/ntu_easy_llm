@@ -34,6 +34,12 @@ where = ["src"]
 # Ship the PEP 561 marker so downstream type checkers use our type hints.
 ntu_easy_llm = ["py.typed"]
 
+[tool.pytest.ini_options]
+# Only collect the real pytest suite; smoke_test.py and the code*.py demos
+# are runnable scripts, not pytest modules.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
 [project.optional-dependencies]
 # 安裝方式 pip install ntu-easy-llm[dev]
 dev = [
