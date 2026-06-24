@@ -305,6 +305,21 @@ def offline_tests() -> None:
 
     check("LLMSession.ask_async (背景執行緒 + callback)", _session_async)
 
+    def _response_cache():
+        from ntu_easy_llm import ResponseCache
+        with tempfile.TemporaryDirectory() as td:
+            c = ResponseCache("smoke", cache_dir=td)
+            k = c.make_key("chatgpt", "gpt-4.1", "hi")
+            assert k not in c and c.get(k) is None
+            c.set(k, "ans")
+            assert k in c and c.get(k) == "ans"
+            # autosave 落盤 → 新實例可從磁碟重載
+            c2 = ResponseCache("smoke", cache_dir=td)
+            assert c2.get(k) == "ans"
+        return "set/get/__contains__/make_key/落盤重載 正常"
+
+    check("ResponseCache 寫入/讀取/持久化", _response_cache)
+
     # --- Adapter 建構 (帶假金鑰，不呼叫 .ask 不連網) ---
     def _adapters_construct():
         from ntu_easy_llm import (
@@ -452,6 +467,18 @@ def live_tests(only: str | None, web: bool) -> None:
         f"[{sp}] LLMSession 多輪對話保有記憶",
         lambda sp=sp: _check_session_memory(sp),
     )
+
+    # --- ask_many 批次多工 + cache (挑一個可用平台) ---
+    def _check_ask_many():
+        outs = L.ask_many(
+            ["Reply with exactly: A", "Reply with exactly: B"],
+            sp, model=_LIVE_MODELS[sp], max_concurrent=2,
+        )
+        assert len(outs) == 2, f"應回收 2 筆，實得 {len(outs)}"
+        assert all(isinstance(o, str) and o.strip() for o in outs), f"回應有空值：{outs!r}"
+        return f"2 題併發、照序回收 {len(outs)} 筆"
+
+    check(f"[{sp}] ask_many 批次多工 (有界併發)", _check_ask_many)
 
 
 def _ask_ok(r) -> str:

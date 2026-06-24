@@ -48,10 +48,11 @@ _LAZY_SUBMODULES: dict[str, tuple[str, ...]] = {
     ".core.utils": (
         "ask_chatgpt", "ask_gemini", "ask_anthropic",
         "ask_chatgpt_async", "ask_gemini_async", "ask_anthropic_async",
-        "ask",
+        "ask", "ask_many",
         "list_chatgpt_models", "list_gemini_models", "list_anthropic_models",
         "LLMAdapter", "ChatGPTAdapter", "GeminiAdapter", "AnthropicAdapter",
     ),
+    ".core.cache": ("ResponseCache",),
     ".core.session": ("LLMSession",),
     ".core.cryptions": (
         "KeyMaterial", "EnvKeyProvider",
@@ -96,10 +97,11 @@ if TYPE_CHECKING:
     from .core.utils import (
         ask_anthropic, ask_chatgpt, ask_gemini,
         ask_anthropic_async, ask_chatgpt_async, ask_gemini_async,
-        ask,
+        ask, ask_many,
         list_anthropic_models, list_chatgpt_models, list_gemini_models,
         AnthropicAdapter, ChatGPTAdapter, GeminiAdapter, LLMAdapter,
     )
+    from .core.cache import ResponseCache
     from .core.session import LLMSession
     from .core.cryptions import (
         KeyMaterial, EnvKeyProvider,
@@ -136,6 +138,12 @@ __all__ = [
 
     # unified dispatcher
     "ask",
+
+    # batch (bounded concurrency + retry + optional cache)
+    "ask_many",
+
+    # response cache
+    "ResponseCache",
 
     # model listing
     "list_chatgpt_models",

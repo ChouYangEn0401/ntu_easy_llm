@@ -8,9 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `ask_many()` — batch helper that runs many prompts with **bounded
+  concurrency** (`max_concurrent`), per-prompt retry with exponential backoff,
+  optional throttle and progress callback, and returns answers in input order.
+- `ResponseCache` — a thread-safe, JSON-backed `key -> answer` cache. Pass it to
+  `ask_chatgpt` / `ask_gemini` / `ask_anthropic` / `ask_many` (`cache=`) to skip
+  questions already answered on a previous run. Keys are auto-hashed from
+  `(provider, model, prompt, web_search)` or supplied explicitly (`cache_key` /
+  `cache_keys`) for a semantic question→answer mapping.
 - Deployment smoke test (`tests/smoke_test.py`) covering every public API,
   with an offline tier (no keys / no network) and a `--live` tier; full run
   results recorded in `TEST_LOG.md`.
+- Offline pytest suite (`tests/test_public_api.py`) + pytest config.
 - `LICENSE` (MIT) and a `py.typed` marker so the package ships as a typed
   library (consumers' type checkers now pick up the bundled type hints).
 

@@ -9,9 +9,10 @@ This module provides:
 """
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
-from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, Literal
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING, Callable, Literal, Sequence
 
 from anthropic import Anthropic
 from google import genai
@@ -26,9 +27,44 @@ from .response_utils import (
     parse_openai_response,
 )
 
+if TYPE_CHECKING:
+    from .cache import ResponseCache
+
 # Module-level thread pool shared by all stateless async helpers.
 # For session-level concurrency see LLMSession._executor.
 _thread_pool = ThreadPoolExecutor(max_workers=8)
+
+# Recommended default model per provider (lower-case provider keys).
+_DEFAULT_MODELS: dict[str, str] = {
+    "chatgpt": "gpt-4.1",
+    "gemini": "gemini-2.5-flash",
+    "anthropic": "claude-haiku-4-5-20251001",
+}
+
+
+def _cached(
+    cache: "ResponseCache | None",
+    cache_key: str | None,
+    provider: str,
+    model: str,
+    prompt: str,
+    web_search: bool,
+    compute: "Callable[[], str]",
+) -> str:
+    """Return a cached answer if present, else compute it and store it.
+
+    The key is *cache_key* when given (a caller-chosen semantic key), otherwise
+    a hash of ``(provider, model, prompt, web_search)``.
+    """
+    if cache is None:
+        return compute()
+    key = cache_key or cache.make_key(provider, model, prompt, web_search)
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    result = compute()
+    cache.set(key, result)
+    return result
 
 
 # =============================================================================
@@ -146,6 +182,8 @@ def ask_chatgpt(
     model_name: ChatGPTModel = "gpt-4.1",
     web_search: bool = False,
     password: str | None = None,
+    cache: "ResponseCache | None" = None,
+    cache_key: str | None = None,
 ) -> str:
     """Ask ChatGPT a single question and return the answer (blocking).
 
@@ -159,9 +197,18 @@ def ask_chatgpt(
         When *True* the model is allowed to search the web before answering.
     password:
         AES password used to decrypt an encrypted API key stored in .env.
+    cache:
+        Optional :class:`~ntu_easy_llm.ResponseCache`. When supplied, a cached
+        answer is returned instead of calling the API; new answers are stored.
+    cache_key:
+        Optional caller-chosen key for the cache entry. Defaults to a hash of
+        ``(provider, model, prompt, web_search)``.
     """
-    key = _resolve_api_key("chatgpt", None, password)
-    return _call_chatgpt(key, [{"role": "user", "content": prompt}], model_name, web_search)
+    def _compute() -> str:
+        key = _resolve_api_key("chatgpt", None, password)
+        return _call_chatgpt(key, [{"role": "user", "content": prompt}], model_name, web_search)
+
+    return _cached(cache, cache_key, "chatgpt", model_name, prompt, web_search, _compute)
 
 
 def ask_chatgpt_async(
@@ -199,6 +246,8 @@ def ask_gemini(
     model_name: GeminiModel = "gemini-2.5-flash",
     web_search: bool = False,
     password: str | None = None,
+    cache: "ResponseCache | None" = None,
+    cache_key: str | None = None,
 ) -> str:
     """Ask Gemini a single question and return the answer (blocking).
 
@@ -206,9 +255,16 @@ def ask_gemini(
     ----------
     web_search:
         When *True* activates Google Search grounding.
+    cache:
+        Optional :class:`~ntu_easy_llm.ResponseCache` (see :func:`ask_chatgpt`).
+    cache_key:
+        Optional caller-chosen cache key.
     """
-    key = _resolve_api_key("gemini", None, password)
-    return _call_gemini(key, [{"role": "user", "content": prompt}], model_name, web_search)
+    def _compute() -> str:
+        key = _resolve_api_key("gemini", None, password)
+        return _call_gemini(key, [{"role": "user", "content": prompt}], model_name, web_search)
+
+    return _cached(cache, cache_key, "gemini", model_name, prompt, web_search, _compute)
 
 
 def ask_gemini_async(
@@ -234,10 +290,23 @@ def ask_anthropic(
     prompt: str,
     model_name: AnthropicModel = "claude-haiku-4-5-20251001",
     password: str | None = None,
+    cache: "ResponseCache | None" = None,
+    cache_key: str | None = None,
 ) -> str:
-    """Ask Anthropic Claude a single question and return the answer (blocking)."""
-    key = _resolve_api_key("anthropic", None, password)
-    return _call_anthropic(key, [{"role": "user", "content": prompt}], model_name)
+    """Ask Anthropic Claude a single question and return the answer (blocking).
+
+    Parameters
+    ----------
+    cache:
+        Optional :class:`~ntu_easy_llm.ResponseCache` (see :func:`ask_chatgpt`).
+    cache_key:
+        Optional caller-chosen cache key.
+    """
+    def _compute() -> str:
+        key = _resolve_api_key("anthropic", None, password)
+        return _call_anthropic(key, [{"role": "user", "content": prompt}], model_name)
+
+    return _cached(cache, cache_key, "anthropic", model_name, prompt, False, _compute)
 
 
 def ask_anthropic_async(
@@ -284,6 +353,132 @@ def ask(
             f"Unknown provider: {service_provider!r}. "
             "Use 'CHATGPT', 'GEMINI', or 'ANTHROPIC'."
         )
+
+
+# =============================================================================
+# Batch  (bounded concurrency + retry + optional cache)
+# =============================================================================
+
+def ask_many(
+    prompts: Sequence[str],
+    provider: Literal["chatgpt", "gemini", "anthropic"] = "chatgpt",
+    model: str | None = None,
+    *,
+    max_concurrent: int = 4,
+    retries: int = 2,
+    backoff: float = 1.0,
+    wait_seconds: float = 0.0,
+    web_search: bool = False,
+    password: str | None = None,
+    on_result: Callable[[int, str, str], None] | None = None,
+    cache: "ResponseCache | None" = None,
+    cache_keys: Sequence[str] | None = None,
+) -> list[str]:
+    """Ask many prompts concurrently and return the answers **in input order**.
+
+    Concurrency is bounded by *max_concurrent* — the single most important knob
+    for staying under provider rate limits, so it is yours to set. Each call is
+    retried up to *retries* times with exponential backoff; supply a *cache* to
+    skip prompts that were already answered on a previous run.
+
+    Parameters
+    ----------
+    prompts:
+        The prompts to send.
+    provider:
+        ``"chatgpt"``, ``"gemini"``, or ``"anthropic"`` (case-insensitive).
+    model:
+        Model to use. Defaults to the provider's recommended model.
+    max_concurrent:
+        Maximum number of requests in flight at once (rate-limit control).
+    retries:
+        Extra attempts per prompt on error (total tries = ``retries + 1``).
+    backoff:
+        Base seconds for exponential backoff between retries (``backoff * 2**n``).
+    wait_seconds:
+        Optional pause after each call to further throttle throughput.
+    web_search:
+        Enable web search (ChatGPT / Gemini only; ignored for Anthropic).
+    password:
+        AES password to decrypt an encrypted key in ``.env``.
+    on_result:
+        ``on_result(index, prompt, answer)`` — called on a worker thread as each
+        result arrives (useful for progress bars / incremental writing).
+    cache:
+        Optional :class:`~ntu_easy_llm.ResponseCache`. Cached prompts are not
+        re-sent; new answers are stored, and the cache is saved once at the end
+        (so an interrupted run can resume).
+    cache_keys:
+        Optional per-prompt semantic keys (same length as *prompts*). Defaults
+        to hashing each prompt.
+
+    Returns
+    -------
+    list[str]
+        Answers aligned with *prompts*.
+
+    Notes
+    -----
+    If a prompt still fails after all retries the exception propagates. When a
+    *cache* is supplied the answers gathered before the failure are persisted,
+    so re-running resumes from where it stopped.
+    """
+    provider_l = provider.lower()
+    if provider_l not in _DEFAULT_MODELS:
+        raise ValueError(
+            f"Unknown provider: {provider!r}. "
+            "Use 'chatgpt', 'gemini', or 'anthropic'."
+        )
+    model = model or _DEFAULT_MODELS[provider_l]
+
+    prompt_list = list(prompts)
+    if cache_keys is not None:
+        cache_keys = list(cache_keys)
+        if len(cache_keys) != len(prompt_list):
+            raise ValueError("cache_keys must be the same length as prompts.")
+
+    api_key = _resolve_api_key(provider_l, None, password)
+    _provider_call = {
+        "chatgpt": lambda p: _call_chatgpt(api_key, [{"role": "user", "content": p}], model, web_search),
+        "gemini": lambda p: _call_gemini(api_key, [{"role": "user", "content": p}], model, web_search),
+        "anthropic": lambda p: _call_anthropic(api_key, [{"role": "user", "content": p}], model),
+    }[provider_l]
+
+    def _one(index: int, prompt: str) -> str:
+        ck = cache_keys[index] if cache_keys is not None else None
+
+        def _compute() -> str:
+            last_exc: Exception | None = None
+            for attempt in range(retries + 1):
+                try:
+                    return _provider_call(prompt)
+                except Exception as exc:  # noqa: BLE001 — retry then re-raise
+                    last_exc = exc
+                    if attempt < retries:
+                        time.sleep(backoff * (2 ** attempt))
+            assert last_exc is not None
+            raise last_exc
+
+        result = _cached(cache, ck, provider_l, model, prompt, web_search, _compute)
+        if wait_seconds:
+            time.sleep(wait_seconds)
+        if on_result is not None:
+            on_result(index, prompt, result)
+        return result
+
+    results: list[str] = [""] * len(prompt_list)
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, max_concurrent)) as pool:
+            futures = {
+                pool.submit(_one, i, p): i
+                for i, p in enumerate(prompt_list)
+            }
+            for fut in as_completed(futures):
+                results[futures[fut]] = fut.result()
+    finally:
+        if cache is not None:
+            cache.save()
+    return results
 
 
 # =============================================================================

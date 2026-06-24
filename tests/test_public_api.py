@@ -179,3 +179,101 @@ def test_session_unknown_provider_raises(bad):
 def test_dispatcher_unknown_provider_raises():
     with pytest.raises(ValueError):
         L.ask("BADPROVIDER", "k", "p", "m")  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# ResponseCache
+# --------------------------------------------------------------------------- #
+
+def test_response_cache_roundtrip_and_persist(tmp_path):
+    c = L.ResponseCache("unit", cache_dir=tmp_path)
+    key = c.make_key("chatgpt", "gpt-4.1", "hi", web_search=False)
+    assert key not in c
+    assert c.get(key) is None
+
+    c.set(key, "answer")
+    assert key in c
+    assert c.get(key) == "answer"
+    assert len(c) == 1
+
+    # autosave wrote it; a fresh instance reloads from disk
+    c2 = L.ResponseCache("unit", cache_dir=tmp_path)
+    assert c2.get(key) == "answer"
+
+
+def test_response_cache_make_key_is_stable_and_distinct():
+    k1 = L.ResponseCache.make_key("chatgpt", "gpt-4.1", "hi")
+    k2 = L.ResponseCache.make_key("chatgpt", "gpt-4.1", "hi")
+    k3 = L.ResponseCache.make_key("chatgpt", "gpt-4.1", "hi", web_search=True)
+    assert k1 == k2
+    assert k1 != k3
+
+
+# --------------------------------------------------------------------------- #
+# ask_many (provider call stubbed — no network)
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def stub_chatgpt(monkeypatch):
+    """Make ask_many's chatgpt path echo the prompt; count calls."""
+    from ntu_easy_llm.core import utils
+
+    calls = {"n": 0}
+
+    def _fake_call(api_key, messages, model, web_search=False):
+        calls["n"] += 1
+        return f"echo:{messages[0]['content']}"
+
+    monkeypatch.setattr(utils, "_resolve_api_key", lambda *a, **k: "fake-key")
+    monkeypatch.setattr(utils, "_call_chatgpt", _fake_call)
+    return calls
+
+
+def test_ask_many_returns_in_order(stub_chatgpt):
+    prompts = [f"q{i}" for i in range(10)]
+    out = L.ask_many(prompts, "chatgpt", max_concurrent=4)
+    assert out == [f"echo:q{i}" for i in range(10)]
+    assert stub_chatgpt["n"] == 10
+
+
+def test_ask_many_uses_cache_to_skip_calls(stub_chatgpt, tmp_path):
+    cache = L.ResponseCache("batch", cache_dir=tmp_path)
+    prompts = ["a", "b", "c"]
+
+    first = L.ask_many(prompts, "chatgpt", cache=cache)
+    assert first == ["echo:a", "echo:b", "echo:c"]
+    assert stub_chatgpt["n"] == 3
+
+    # second run: everything served from cache, no new provider calls
+    second = L.ask_many(prompts, "chatgpt", cache=cache)
+    assert second == first
+    assert stub_chatgpt["n"] == 3
+
+
+def test_ask_many_retries_then_succeeds(monkeypatch):
+    from ntu_easy_llm.core import utils
+
+    attempts = {"n": 0}
+
+    def _flaky(api_key, messages, model, web_search=False):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise RuntimeError("transient")
+        return "ok"
+
+    monkeypatch.setattr(utils, "_resolve_api_key", lambda *a, **k: "fake-key")
+    monkeypatch.setattr(utils, "_call_chatgpt", _flaky)
+
+    out = L.ask_many(["only"], "chatgpt", retries=3, backoff=0.0)
+    assert out == ["ok"]
+    assert attempts["n"] == 3
+
+
+def test_ask_many_unknown_provider_raises():
+    with pytest.raises(ValueError):
+        L.ask_many(["x"], "bad")  # type: ignore[arg-type]
+
+
+def test_ask_many_cache_keys_length_mismatch_raises():
+    with pytest.raises(ValueError):
+        L.ask_many(["a", "b"], "chatgpt", cache_keys=["only-one"])

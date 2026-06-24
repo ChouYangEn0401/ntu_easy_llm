@@ -440,6 +440,70 @@ print(rsa_encrypt("AIza-真正的金鑰", public_key_pem="-----BEGIN PUBLIC KEY-
 
 ---
 
+### 範例 10 — 批次多工 + 結果快取（ask_many / ResponseCache）
+
+需要一次問很多題時，用 `ask_many` 併發送出並**照輸入順序**收回結果。`max_concurrent`
+是限流旋鈕（各家 API 有 rate limit，請自行斟酌）；每題失敗會自動 retry。
+
+```python
+from ntu_easy_llm import ask_many
+
+prompts = [f"用一句話解釋：{t}" for t in ("RAG", "Transformer", "Diffusion")]
+answers = ask_many(
+    prompts,
+    provider="chatgpt",
+    max_concurrent=3,      # 同時最多 3 個請求（避免觸發 rate limit）
+    retries=2,             # 每題最多重試 2 次
+    on_result=lambda i, p, a: print(f"[{i}] done"),
+)
+for a in answers:
+    print(a)
+```
+
+搭配 `ResponseCache`，**問過的就不再問**——把已問過的問題與答案變成一份持久化 mapping，
+重跑時自動跳過已完成的項目（中途中斷也能續跑）。
+
+```python
+from ntu_easy_llm import ask_chatgpt, ask_many, ResponseCache
+
+cache = ResponseCache("my_project")        # ~/.ntu_easy_llm/cache/my_project.json
+
+# 單題：第二次相同呼叫直接讀快取，不打 API
+ask_chatgpt("什麼是 RAG？", cache=cache)
+ask_chatgpt("什麼是 RAG？", cache=cache)   # ← 命中快取
+
+# 批次：只有沒問過的才會真的送出
+ask_many(prompts, "chatgpt", cache=cache)
+```
+
+預設用 `(provider, model, prompt, web_search)` 雜湊當 key。若 prompt 會變動、但你問的
+「對象」是穩定的（例如某個地址、某組 ID），可自帶**語意 key** 建立你自己的 mapping：
+
+```python
+# cache_key 由你決定（例：地址字串、"isi||name"、"|".join(sorted([a, b]))）
+ask_chatgpt(build_prompt(addr), cache=cache, cache_key=addr)
+answers = ask_many(prompts, "chatgpt", cache=cache, cache_keys=[addr1, addr2, ...])
+
+# ResponseCache 也可當一般 mapping 直接用
+key = cache.make_key("chatgpt", "gpt-4.1", "hi")
+if key in cache:
+    print(cache.get(key))
+cache.set("my-key", "my-value")
+cache.save()
+```
+
+| 參數（`ask_many`）| 說明                                              |
+|------------------|---------------------------------------------------|
+| `max_concurrent` | 同時在途的最大請求數（rate-limit 控制）             |
+| `retries`        | 每題額外重試次數（總嘗試 = `retries + 1`）          |
+| `backoff`        | 重試間的指數退避基數秒數（`backoff * 2**n`）        |
+| `wait_seconds`   | 每次呼叫後額外暫停，進一步節流                      |
+| `on_result`      | `on_result(index, prompt, answer)` 進度回呼        |
+| `cache`          | 傳入 `ResponseCache`，命中則不重送、結束時自動存檔  |
+| `cache_keys`     | 每題自訂語意 key（長度需與 prompts 相同）           |
+
+---
+
 ## Response 解析工具
 
 若你直接呼叫各平台的原始 SDK，可用這些函式統一萃取回應文字（自動處理 `None` 與空白）：
@@ -515,6 +579,8 @@ text = parse_openai_response(resp)
 | `ask_chatgpt` / `_gemini` / `_anthropic`       | function    | 單次問答，阻斷式                  |
 | `ask_chatgpt_async` / `_gemini_async` / `_anthropic_async` | function | 單次問答，非阻斷 + `end_callback` |
 | `ask`                         | function    | 統一入口，需自帶 API 金鑰                           |
+| `ask_many`                    | function    | 批次多工：有界併發 + 重試 + 可選快取，照順序回傳    |
+| `ResponseCache`               | class       | 持久化「key→答案」快取，問過的不再問                |
 | `LLMSession`                  | class       | 多輪對話，支援儲存 / 繼續 / 歷史壓縮                |
 | `LLMSession.resume`           | classmethod | 依 session ID 從磁碟載入並繼續                      |
 | `LLMAdapter`                  | class (ABC) | Adapter 抽象基底類別                                |
