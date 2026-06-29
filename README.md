@@ -1,6 +1,6 @@
 # ntu_easy_llm
 
-> **v0.3.0** · Python 3.11+
+> **v0.4.3** · Python 3.11+
 
 針對 **ChatGPT**、**Gemini**、**Anthropic Claude** 三大 LLM 服務的輕量 Python 封裝套件。
 

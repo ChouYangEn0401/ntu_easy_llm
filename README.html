@@ -47,7 +47,7 @@
     <span id="markdown-mermaid" aria-hidden="true" data-config="{&quot;darkModeTheme&quot;:&quot;vscode&quot;,&quot;lightModeTheme&quot;:&quot;vscode&quot;,&quot;maxTextSize&quot;:50000,&quot;clickDrag&quot;:&quot;alt&quot;,&quot;showControls&quot;:&quot;onHoverOrFocus&quot;,&quot;resizable&quot;:true,&quot;maxHeight&quot;:&quot;&quot;}"></span>
 				<h1 data-line="0" class="code-line" dir="auto" id="ntu_easy_llm">ntu_easy_llm</h1>
 <blockquote data-line="2" class="code-line" dir="auto">
-<p data-line="2" class="code-line" dir="auto"><strong>v0.3.0</strong> · Python 3.11+</p>
+<p data-line="2" class="code-line" dir="auto"><strong>v0.4.3</strong> · Python 3.11+</p>
 </blockquote>
 <p data-line="4" class="code-line" dir="auto">針對 <strong>ChatGPT</strong>、<strong>Gemini</strong>、<strong>Anthropic Claude</strong> 三大 LLM 服務的輕量 Python 封裝套件。</p>
 <ul data-line="6" class="code-line" dir="auto">
@@ -508,9 +508,90 @@ anthropic_key = KeyMaterial(
 <span class="hljs-built_in">print</span>(rsa_encrypt(<span class="hljs-string">&quot;AIza-真正的金鑰&quot;</span>, public_key_pem=<span class="hljs-string">&quot;-----BEGIN PUBLIC KEY-----\n...&quot;</span>))
 </code></pre>
 <hr data-line="440" class="code-line" dir="auto">
-<h2 data-line="442" class="code-line" dir="auto" id="response-解析工具">Response 解析工具</h2>
-<p data-line="444" class="code-line" dir="auto">若你直接呼叫各平台的原始 SDK，可用這些函式統一萃取回應文字（自動處理 <code>None</code> 與空白）：</p>
-<pre><code data-line="446" class="code-line language-python" dir="auto"><span class="hljs-keyword">from</span> ntu_easy_llm <span class="hljs-keyword">import</span> (
+<h3 data-line="442" class="code-line" dir="auto" id="範例-10--批次多工--結果快取ask_many--responsecache">範例 10 — 批次多工 + 結果快取（ask_many / ResponseCache）</h3>
+<p data-line="444" class="code-line" dir="auto">需要一次問很多題時，用 <code>ask_many</code> 併發送出並<strong>照輸入順序</strong>收回結果。<code>max_concurrent</code>
+是限流旋鈕（各家 API 有 rate limit，請自行斟酌）；每題失敗會自動 retry。</p>
+<pre><code data-line="447" class="code-line language-python" dir="auto"><span class="hljs-keyword">from</span> ntu_easy_llm <span class="hljs-keyword">import</span> ask_many
+
+prompts = [<span class="hljs-string">f&quot;用一句話解釋：<span class="hljs-subst">{t}</span>&quot;</span> <span class="hljs-keyword">for</span> t <span class="hljs-keyword">in</span> (<span class="hljs-string">&quot;RAG&quot;</span>, <span class="hljs-string">&quot;Transformer&quot;</span>, <span class="hljs-string">&quot;Diffusion&quot;</span>)]
+answers = ask_many(
+    prompts,
+    provider=<span class="hljs-string">&quot;chatgpt&quot;</span>,
+    max_concurrent=<span class="hljs-number">3</span>,      <span class="hljs-comment"># 同時最多 3 個請求（避免觸發 rate limit）</span>
+    retries=<span class="hljs-number">2</span>,             <span class="hljs-comment"># 每題最多重試 2 次</span>
+    on_result=<span class="hljs-keyword">lambda</span> i, p, a: <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;[<span class="hljs-subst">{i}</span>] done&quot;</span>),
+)
+<span class="hljs-keyword">for</span> a <span class="hljs-keyword">in</span> answers:
+    <span class="hljs-built_in">print</span>(a)
+</code></pre>
+<p data-line="462" class="code-line" dir="auto">搭配 <code>ResponseCache</code>，<strong>問過的就不再問</strong>——把已問過的問題與答案變成一份持久化 mapping，
+重跑時自動跳過已完成的項目（中途中斷也能續跑）。</p>
+<pre><code data-line="465" class="code-line language-python" dir="auto"><span class="hljs-keyword">from</span> ntu_easy_llm <span class="hljs-keyword">import</span> ask_chatgpt, ask_many, ResponseCache
+
+cache = ResponseCache(<span class="hljs-string">&quot;my_project&quot;</span>)        <span class="hljs-comment"># ~/.ntu_easy_llm/cache/my_project.json</span>
+
+<span class="hljs-comment"># 單題：第二次相同呼叫直接讀快取，不打 API</span>
+ask_chatgpt(<span class="hljs-string">&quot;什麼是 RAG？&quot;</span>, cache=cache)
+ask_chatgpt(<span class="hljs-string">&quot;什麼是 RAG？&quot;</span>, cache=cache)   <span class="hljs-comment"># ← 命中快取</span>
+
+<span class="hljs-comment"># 批次：只有沒問過的才會真的送出</span>
+ask_many(prompts, <span class="hljs-string">&quot;chatgpt&quot;</span>, cache=cache)
+</code></pre>
+<p data-line="478" class="code-line" dir="auto">預設用 <code>(provider, model, prompt, web_search)</code> 雜湊當 key。若 prompt 會變動、但你問的
+「對象」是穩定的（例如某個地址、某組 ID），可自帶<strong>語意 key</strong> 建立你自己的 mapping：</p>
+<pre><code data-line="481" class="code-line language-python" dir="auto"><span class="hljs-comment"># cache_key 由你決定（例：地址字串、&quot;isi||name&quot;、&quot;|&quot;.join(sorted([a, b]))）</span>
+ask_chatgpt(build_prompt(addr), cache=cache, cache_key=addr)
+answers = ask_many(prompts, <span class="hljs-string">&quot;chatgpt&quot;</span>, cache=cache, cache_keys=[addr1, addr2, ...])
+
+<span class="hljs-comment"># ResponseCache 也可當一般 mapping 直接用</span>
+key = cache.make_key(<span class="hljs-string">&quot;chatgpt&quot;</span>, <span class="hljs-string">&quot;gpt-4.1&quot;</span>, <span class="hljs-string">&quot;hi&quot;</span>)
+<span class="hljs-keyword">if</span> key <span class="hljs-keyword">in</span> cache:
+    <span class="hljs-built_in">print</span>(cache.get(key))
+cache.<span class="hljs-built_in">set</span>(<span class="hljs-string">&quot;my-key&quot;</span>, <span class="hljs-string">&quot;my-value&quot;</span>)
+cache.save()
+</code></pre>
+<table data-line="494" class="code-line" dir="auto">
+<thead data-line="494" class="code-line" dir="auto">
+<tr data-line="494" class="code-line" dir="auto">
+<th data-line="494" class="code-line" dir="auto">參數（<code>ask_many</code>）</th>
+<th data-line="494" class="code-line" dir="auto">說明</th>
+</tr>
+</thead>
+<tbody data-line="496" class="code-line" dir="auto">
+<tr data-line="496" class="code-line" dir="auto">
+<td data-line="496" class="code-line" dir="auto"><code>max_concurrent</code></td>
+<td data-line="496" class="code-line" dir="auto">同時在途的最大請求數（rate-limit 控制）</td>
+</tr>
+<tr data-line="497" class="code-line" dir="auto">
+<td data-line="497" class="code-line" dir="auto"><code>retries</code></td>
+<td data-line="497" class="code-line" dir="auto">每題額外重試次數（總嘗試 = <code>retries + 1</code>）</td>
+</tr>
+<tr data-line="498" class="code-line" dir="auto">
+<td data-line="498" class="code-line" dir="auto"><code>backoff</code></td>
+<td data-line="498" class="code-line" dir="auto">重試間的指數退避基數秒數（<code>backoff * 2**n</code>）</td>
+</tr>
+<tr data-line="499" class="code-line" dir="auto">
+<td data-line="499" class="code-line" dir="auto"><code>wait_seconds</code></td>
+<td data-line="499" class="code-line" dir="auto">每次呼叫後額外暫停，進一步節流</td>
+</tr>
+<tr data-line="500" class="code-line" dir="auto">
+<td data-line="500" class="code-line" dir="auto"><code>on_result</code></td>
+<td data-line="500" class="code-line" dir="auto"><code>on_result(index, prompt, answer)</code> 進度回呼</td>
+</tr>
+<tr data-line="501" class="code-line" dir="auto">
+<td data-line="501" class="code-line" dir="auto"><code>cache</code></td>
+<td data-line="501" class="code-line" dir="auto">傳入 <code>ResponseCache</code>，命中則不重送、結束時自動存檔</td>
+</tr>
+<tr data-line="502" class="code-line" dir="auto">
+<td data-line="502" class="code-line" dir="auto"><code>cache_keys</code></td>
+<td data-line="502" class="code-line" dir="auto">每題自訂語意 key（長度需與 prompts 相同）</td>
+</tr>
+</tbody>
+</table>
+<hr data-line="504" class="code-line" dir="auto">
+<h2 data-line="506" class="code-line" dir="auto" id="response-解析工具">Response 解析工具</h2>
+<p data-line="508" class="code-line" dir="auto">若你直接呼叫各平台的原始 SDK，可用這些函式統一萃取回應文字（自動處理 <code>None</code> 與空白）：</p>
+<pre><code data-line="510" class="code-line language-python" dir="auto"><span class="hljs-keyword">from</span> ntu_easy_llm <span class="hljs-keyword">import</span> (
     parse_openai_response,     <span class="hljs-comment"># client.responses.create()          → str</span>
     parse_openai_completion,   <span class="hljs-comment"># client.chat.completions.create()   → str</span>
     parse_gemini_response,     <span class="hljs-comment"># client.models.generate_content()   → str</span>
@@ -522,238 +603,251 @@ client = OpenAI(api_key=<span class="hljs-string">&quot;sk-...&quot;</span>)
 resp = client.responses.create(model=<span class="hljs-string">&quot;gpt-4.1&quot;</span>, <span class="hljs-built_in">input</span>=<span class="hljs-string">&quot;你好！&quot;</span>)
 text = parse_openai_response(resp)
 </code></pre>
-<hr data-line="460" class="code-line" dir="auto">
-<h2 data-line="462" class="code-line" dir="auto" id="可用模型列表">可用模型列表</h2>
-<p data-line="464" class="code-line" dir="auto">未指定 <code>model_name</code> 時使用各平台<strong>預設</strong>（粗體）。完整清單以 <code>ChatGPTModel</code> / <code>GeminiModel</code> /
+<hr data-line="524" class="code-line" dir="auto">
+<h2 data-line="526" class="code-line" dir="auto" id="可用模型列表">可用模型列表</h2>
+<p data-line="528" class="code-line" dir="auto">未指定 <code>model_name</code> 時使用各平台<strong>預設</strong>（粗體）。完整清單以 <code>ChatGPTModel</code> / <code>GeminiModel</code> /
 <code>AnthropicModel</code> 型別別名為準。</p>
-<h3 data-line="467" class="code-line" dir="auto" id="chatgpt--openai">ChatGPT / OpenAI</h3>
-<table data-line="469" class="code-line" dir="auto">
-<thead data-line="469" class="code-line" dir="auto">
-<tr data-line="469" class="code-line" dir="auto">
-<th data-line="469" class="code-line" dir="auto">模型</th>
-<th data-line="469" class="code-line" dir="auto">說明</th>
+<h3 data-line="531" class="code-line" dir="auto" id="chatgpt--openai">ChatGPT / OpenAI</h3>
+<table data-line="533" class="code-line" dir="auto">
+<thead data-line="533" class="code-line" dir="auto">
+<tr data-line="533" class="code-line" dir="auto">
+<th data-line="533" class="code-line" dir="auto">模型</th>
+<th data-line="533" class="code-line" dir="auto">說明</th>
 </tr>
 </thead>
-<tbody data-line="471" class="code-line" dir="auto">
-<tr data-line="471" class="code-line" dir="auto">
-<td data-line="471" class="code-line" dir="auto"><code>gpt-5.2</code></td>
-<td data-line="471" class="code-line" dir="auto">最新旗艦</td>
+<tbody data-line="535" class="code-line" dir="auto">
+<tr data-line="535" class="code-line" dir="auto">
+<td data-line="535" class="code-line" dir="auto"><code>gpt-5.2</code></td>
+<td data-line="535" class="code-line" dir="auto">最新旗艦</td>
 </tr>
-<tr data-line="472" class="code-line" dir="auto">
-<td data-line="472" class="code-line" dir="auto"><code>gpt-5.2-pro</code></td>
-<td data-line="472" class="code-line" dir="auto">複雜推理 / agent workflow</td>
+<tr data-line="536" class="code-line" dir="auto">
+<td data-line="536" class="code-line" dir="auto"><code>gpt-5.2-pro</code></td>
+<td data-line="536" class="code-line" dir="auto">複雜推理 / agent workflow</td>
 </tr>
-<tr data-line="473" class="code-line" dir="auto">
-<td data-line="473" class="code-line" dir="auto"><code>gpt-5.1</code> / <code>gpt-5</code></td>
-<td data-line="473" class="code-line" dir="auto">5 系列</td>
+<tr data-line="537" class="code-line" dir="auto">
+<td data-line="537" class="code-line" dir="auto"><code>gpt-5.1</code> / <code>gpt-5</code></td>
+<td data-line="537" class="code-line" dir="auto">5 系列</td>
 </tr>
-<tr data-line="474" class="code-line" dir="auto">
-<td data-line="474" class="code-line" dir="auto"><strong><code>gpt-4.1</code></strong></td>
-<td data-line="474" class="code-line" dir="auto"><strong>預設</strong> — 平衡效能</td>
+<tr data-line="538" class="code-line" dir="auto">
+<td data-line="538" class="code-line" dir="auto"><strong><code>gpt-4.1</code></strong></td>
+<td data-line="538" class="code-line" dir="auto"><strong>預設</strong> — 平衡效能</td>
 </tr>
-<tr data-line="475" class="code-line" dir="auto">
-<td data-line="475" class="code-line" dir="auto"><code>gpt-4.1-mini</code></td>
-<td data-line="475" class="code-line" dir="auto">較快、成本較低</td>
+<tr data-line="539" class="code-line" dir="auto">
+<td data-line="539" class="code-line" dir="auto"><code>gpt-4.1-mini</code></td>
+<td data-line="539" class="code-line" dir="auto">較快、成本較低</td>
 </tr>
-<tr data-line="476" class="code-line" dir="auto">
-<td data-line="476" class="code-line" dir="auto"><code>gpt-4o</code> / <code>gpt-4o-mini</code></td>
-<td data-line="476" class="code-line" dir="auto">GPT-4o 系列</td>
+<tr data-line="540" class="code-line" dir="auto">
+<td data-line="540" class="code-line" dir="auto"><code>gpt-4o</code> / <code>gpt-4o-mini</code></td>
+<td data-line="540" class="code-line" dir="auto">GPT-4o 系列</td>
 </tr>
-<tr data-line="477" class="code-line" dir="auto">
-<td data-line="477" class="code-line" dir="auto"><code>gpt-4o-search-preview</code> 等</td>
-<td data-line="477" class="code-line" dir="auto">Web 搜尋預覽版</td>
+<tr data-line="541" class="code-line" dir="auto">
+<td data-line="541" class="code-line" dir="auto"><code>gpt-4o-search-preview</code> 等</td>
+<td data-line="541" class="code-line" dir="auto">Web 搜尋預覽版</td>
 </tr>
-<tr data-line="478" class="code-line" dir="auto">
-<td data-line="478" class="code-line" dir="auto"><code>gpt-4-turbo</code></td>
-<td data-line="478" class="code-line" dir="auto">更快版本</td>
+<tr data-line="542" class="code-line" dir="auto">
+<td data-line="542" class="code-line" dir="auto"><code>gpt-4-turbo</code></td>
+<td data-line="542" class="code-line" dir="auto">更快版本</td>
 </tr>
 </tbody>
 </table>
-<p data-line="480" class="code-line" dir="auto">🔗 <a href="https://platform.openai.com/docs/models" data-href="https://platform.openai.com/docs/models">OpenAI 官方模型文件</a></p>
-<h3 data-line="482" class="code-line" dir="auto" id="gemini--google">Gemini / Google</h3>
-<table data-line="484" class="code-line" dir="auto">
-<thead data-line="484" class="code-line" dir="auto">
-<tr data-line="484" class="code-line" dir="auto">
-<th data-line="484" class="code-line" dir="auto">模型</th>
-<th data-line="484" class="code-line" dir="auto">說明</th>
+<p data-line="544" class="code-line" dir="auto">🔗 <a href="https://platform.openai.com/docs/models" data-href="https://platform.openai.com/docs/models">OpenAI 官方模型文件</a></p>
+<h3 data-line="546" class="code-line" dir="auto" id="gemini--google">Gemini / Google</h3>
+<table data-line="548" class="code-line" dir="auto">
+<thead data-line="548" class="code-line" dir="auto">
+<tr data-line="548" class="code-line" dir="auto">
+<th data-line="548" class="code-line" dir="auto">模型</th>
+<th data-line="548" class="code-line" dir="auto">說明</th>
 </tr>
 </thead>
-<tbody data-line="486" class="code-line" dir="auto">
-<tr data-line="486" class="code-line" dir="auto">
-<td data-line="486" class="code-line" dir="auto"><code>gemini-2.5-pro</code></td>
-<td data-line="486" class="code-line" dir="auto">最高能力</td>
+<tbody data-line="550" class="code-line" dir="auto">
+<tr data-line="550" class="code-line" dir="auto">
+<td data-line="550" class="code-line" dir="auto"><code>gemini-2.5-pro</code></td>
+<td data-line="550" class="code-line" dir="auto">最高能力</td>
 </tr>
-<tr data-line="487" class="code-line" dir="auto">
-<td data-line="487" class="code-line" dir="auto"><strong><code>gemini-2.5-flash</code></strong></td>
-<td data-line="487" class="code-line" dir="auto"><strong>預設</strong> — 平衡效能</td>
+<tr data-line="551" class="code-line" dir="auto">
+<td data-line="551" class="code-line" dir="auto"><strong><code>gemini-2.5-flash</code></strong></td>
+<td data-line="551" class="code-line" dir="auto"><strong>預設</strong> — 平衡效能</td>
 </tr>
-<tr data-line="488" class="code-line" dir="auto">
-<td data-line="488" class="code-line" dir="auto"><code>gemini-2.5-flash-lite</code></td>
-<td data-line="488" class="code-line" dir="auto">經濟快速版</td>
+<tr data-line="552" class="code-line" dir="auto">
+<td data-line="552" class="code-line" dir="auto"><code>gemini-2.5-flash-lite</code></td>
+<td data-line="552" class="code-line" dir="auto">經濟快速版</td>
 </tr>
 </tbody>
 </table>
-<p data-line="490" class="code-line" dir="auto">🔗 <a href="https://ai.google.dev/gemini-api/docs/models/gemini" data-href="https://ai.google.dev/gemini-api/docs/models/gemini">Google Gemini 官方模型文件</a></p>
-<h3 data-line="492" class="code-line" dir="auto" id="anthropic-claude">Anthropic Claude</h3>
-<table data-line="494" class="code-line" dir="auto">
-<thead data-line="494" class="code-line" dir="auto">
-<tr data-line="494" class="code-line" dir="auto">
-<th data-line="494" class="code-line" dir="auto">模型</th>
-<th data-line="494" class="code-line" dir="auto">世代</th>
-<th data-line="494" class="code-line" dir="auto">說明</th>
+<p data-line="554" class="code-line" dir="auto">🔗 <a href="https://ai.google.dev/gemini-api/docs/models/gemini" data-href="https://ai.google.dev/gemini-api/docs/models/gemini">Google Gemini 官方模型文件</a></p>
+<h3 data-line="556" class="code-line" dir="auto" id="anthropic-claude">Anthropic Claude</h3>
+<table data-line="558" class="code-line" dir="auto">
+<thead data-line="558" class="code-line" dir="auto">
+<tr data-line="558" class="code-line" dir="auto">
+<th data-line="558" class="code-line" dir="auto">模型</th>
+<th data-line="558" class="code-line" dir="auto">世代</th>
+<th data-line="558" class="code-line" dir="auto">說明</th>
 </tr>
 </thead>
-<tbody data-line="496" class="code-line" dir="auto">
-<tr data-line="496" class="code-line" dir="auto">
-<td data-line="496" class="code-line" dir="auto"><code>claude-opus-4-5-20251101</code></td>
-<td data-line="496" class="code-line" dir="auto">4.5</td>
-<td data-line="496" class="code-line" dir="auto">最新旗艦</td>
+<tbody data-line="560" class="code-line" dir="auto">
+<tr data-line="560" class="code-line" dir="auto">
+<td data-line="560" class="code-line" dir="auto"><code>claude-opus-4-5-20251101</code></td>
+<td data-line="560" class="code-line" dir="auto">4.5</td>
+<td data-line="560" class="code-line" dir="auto">最新旗艦</td>
 </tr>
-<tr data-line="497" class="code-line" dir="auto">
-<td data-line="497" class="code-line" dir="auto"><code>claude-sonnet-4-5-20250929</code></td>
-<td data-line="497" class="code-line" dir="auto">4.5</td>
-<td data-line="497" class="code-line" dir="auto">通用版</td>
+<tr data-line="561" class="code-line" dir="auto">
+<td data-line="561" class="code-line" dir="auto"><code>claude-sonnet-4-5-20250929</code></td>
+<td data-line="561" class="code-line" dir="auto">4.5</td>
+<td data-line="561" class="code-line" dir="auto">通用版</td>
 </tr>
-<tr data-line="498" class="code-line" dir="auto">
-<td data-line="498" class="code-line" dir="auto"><strong><code>claude-haiku-4-5-20251001</code></strong></td>
-<td data-line="498" class="code-line" dir="auto">4.5</td>
-<td data-line="498" class="code-line" dir="auto"><strong>預設</strong> — 快速輕量</td>
+<tr data-line="562" class="code-line" dir="auto">
+<td data-line="562" class="code-line" dir="auto"><strong><code>claude-haiku-4-5-20251001</code></strong></td>
+<td data-line="562" class="code-line" dir="auto">4.5</td>
+<td data-line="562" class="code-line" dir="auto"><strong>預設</strong> — 快速輕量</td>
 </tr>
-<tr data-line="499" class="code-line" dir="auto">
-<td data-line="499" class="code-line" dir="auto"><code>claude-opus-4-1-20250805</code></td>
-<td data-line="499" class="code-line" dir="auto">4.1</td>
-<td data-line="499" class="code-line" dir="auto">舊旗艦，相容長文本</td>
+<tr data-line="563" class="code-line" dir="auto">
+<td data-line="563" class="code-line" dir="auto"><code>claude-opus-4-1-20250805</code></td>
+<td data-line="563" class="code-line" dir="auto">4.1</td>
+<td data-line="563" class="code-line" dir="auto">舊旗艦，相容長文本</td>
 </tr>
-<tr data-line="500" class="code-line" dir="auto">
-<td data-line="500" class="code-line" dir="auto"><code>claude-opus-4-20250514</code></td>
-<td data-line="500" class="code-line" dir="auto">4</td>
-<td data-line="500" class="code-line" dir="auto">舊版，推理佳</td>
+<tr data-line="564" class="code-line" dir="auto">
+<td data-line="564" class="code-line" dir="auto"><code>claude-opus-4-20250514</code></td>
+<td data-line="564" class="code-line" dir="auto">4</td>
+<td data-line="564" class="code-line" dir="auto">舊版，推理佳</td>
 </tr>
-<tr data-line="501" class="code-line" dir="auto">
-<td data-line="501" class="code-line" dir="auto"><code>claude-sonnet-4-20250514</code></td>
-<td data-line="501" class="code-line" dir="auto">4</td>
-<td data-line="501" class="code-line" dir="auto">舊版通用</td>
+<tr data-line="565" class="code-line" dir="auto">
+<td data-line="565" class="code-line" dir="auto"><code>claude-sonnet-4-20250514</code></td>
+<td data-line="565" class="code-line" dir="auto">4</td>
+<td data-line="565" class="code-line" dir="auto">舊版通用</td>
 </tr>
-<tr data-line="502" class="code-line" dir="auto">
-<td data-line="502" class="code-line" dir="auto"><code>claude-3-7-sonnet-20250219</code></td>
-<td data-line="502" class="code-line" dir="auto">3.7</td>
-<td data-line="502" class="code-line" dir="auto">200k context</td>
+<tr data-line="566" class="code-line" dir="auto">
+<td data-line="566" class="code-line" dir="auto"><code>claude-3-7-sonnet-20250219</code></td>
+<td data-line="566" class="code-line" dir="auto">3.7</td>
+<td data-line="566" class="code-line" dir="auto">200k context</td>
 </tr>
-<tr data-line="503" class="code-line" dir="auto">
-<td data-line="503" class="code-line" dir="auto"><code>claude-3-5-haiku-20241022</code></td>
-<td data-line="503" class="code-line" dir="auto">3.5</td>
-<td data-line="503" class="code-line" dir="auto">輕量，部分帳號可用</td>
+<tr data-line="567" class="code-line" dir="auto">
+<td data-line="567" class="code-line" dir="auto"><code>claude-3-5-haiku-20241022</code></td>
+<td data-line="567" class="code-line" dir="auto">3.5</td>
+<td data-line="567" class="code-line" dir="auto">輕量，部分帳號可用</td>
 </tr>
-<tr data-line="504" class="code-line" dir="auto">
-<td data-line="504" class="code-line" dir="auto"><code>claude-3-haiku-20240307</code></td>
-<td data-line="504" class="code-line" dir="auto">3</td>
-<td data-line="504" class="code-line" dir="auto">舊版輕量</td>
+<tr data-line="568" class="code-line" dir="auto">
+<td data-line="568" class="code-line" dir="auto"><code>claude-3-haiku-20240307</code></td>
+<td data-line="568" class="code-line" dir="auto">3</td>
+<td data-line="568" class="code-line" dir="auto">舊版輕量</td>
 </tr>
 </tbody>
 </table>
-<p data-line="506" class="code-line" dir="auto">🔗 <a href="https://docs.anthropic.com/claude/docs/models-overview" data-href="https://docs.anthropic.com/claude/docs/models-overview">Anthropic 官方模型文件</a></p>
-<hr data-line="508" class="code-line" dir="auto">
-<h2 data-line="510" class="code-line" dir="auto" id="完整-api-一覽">完整 API 一覽</h2>
-<table data-line="512" class="code-line" dir="auto">
-<thead data-line="512" class="code-line" dir="auto">
-<tr data-line="512" class="code-line" dir="auto">
-<th data-line="512" class="code-line" dir="auto">名稱</th>
-<th data-line="512" class="code-line" dir="auto">類型</th>
-<th data-line="512" class="code-line" dir="auto">說明</th>
+<p data-line="570" class="code-line" dir="auto">🔗 <a href="https://docs.anthropic.com/claude/docs/models-overview" data-href="https://docs.anthropic.com/claude/docs/models-overview">Anthropic 官方模型文件</a></p>
+<hr data-line="572" class="code-line" dir="auto">
+<h2 data-line="574" class="code-line" dir="auto" id="完整-api-一覽">完整 API 一覽</h2>
+<table data-line="576" class="code-line" dir="auto">
+<thead data-line="576" class="code-line" dir="auto">
+<tr data-line="576" class="code-line" dir="auto">
+<th data-line="576" class="code-line" dir="auto">名稱</th>
+<th data-line="576" class="code-line" dir="auto">類型</th>
+<th data-line="576" class="code-line" dir="auto">說明</th>
 </tr>
 </thead>
-<tbody data-line="514" class="code-line" dir="auto">
-<tr data-line="514" class="code-line" dir="auto">
-<td data-line="514" class="code-line" dir="auto"><code>ask_chatgpt</code> / <code>_gemini</code> / <code>_anthropic</code></td>
-<td data-line="514" class="code-line" dir="auto">function</td>
-<td data-line="514" class="code-line" dir="auto">單次問答，阻斷式</td>
+<tbody data-line="578" class="code-line" dir="auto">
+<tr data-line="578" class="code-line" dir="auto">
+<td data-line="578" class="code-line" dir="auto"><code>ask_chatgpt</code> / <code>_gemini</code> / <code>_anthropic</code></td>
+<td data-line="578" class="code-line" dir="auto">function</td>
+<td data-line="578" class="code-line" dir="auto">單次問答，阻斷式</td>
 </tr>
-<tr data-line="515" class="code-line" dir="auto">
-<td data-line="515" class="code-line" dir="auto"><code>ask_chatgpt_async</code> / <code>_gemini_async</code> / <code>_anthropic_async</code></td>
-<td data-line="515" class="code-line" dir="auto">function</td>
-<td data-line="515" class="code-line" dir="auto">單次問答，非阻斷 + <code>end_callback</code></td>
+<tr data-line="579" class="code-line" dir="auto">
+<td data-line="579" class="code-line" dir="auto"><code>ask_chatgpt_async</code> / <code>_gemini_async</code> / <code>_anthropic_async</code></td>
+<td data-line="579" class="code-line" dir="auto">function</td>
+<td data-line="579" class="code-line" dir="auto">單次問答，非阻斷 + <code>end_callback</code></td>
 </tr>
-<tr data-line="516" class="code-line" dir="auto">
-<td data-line="516" class="code-line" dir="auto"><code>ask</code></td>
-<td data-line="516" class="code-line" dir="auto">function</td>
-<td data-line="516" class="code-line" dir="auto">統一入口，需自帶 API 金鑰</td>
+<tr data-line="580" class="code-line" dir="auto">
+<td data-line="580" class="code-line" dir="auto"><code>ask</code></td>
+<td data-line="580" class="code-line" dir="auto">function</td>
+<td data-line="580" class="code-line" dir="auto">統一入口，需自帶 API 金鑰</td>
 </tr>
-<tr data-line="517" class="code-line" dir="auto">
-<td data-line="517" class="code-line" dir="auto"><code>LLMSession</code></td>
-<td data-line="517" class="code-line" dir="auto">class</td>
-<td data-line="517" class="code-line" dir="auto">多輪對話，支援儲存 / 繼續 / 歷史壓縮</td>
+<tr data-line="581" class="code-line" dir="auto">
+<td data-line="581" class="code-line" dir="auto"><code>ask_many</code></td>
+<td data-line="581" class="code-line" dir="auto">function</td>
+<td data-line="581" class="code-line" dir="auto">批次多工：有界併發 + 重試 + 可選快取，照順序回傳</td>
 </tr>
-<tr data-line="518" class="code-line" dir="auto">
-<td data-line="518" class="code-line" dir="auto"><code>LLMSession.resume</code></td>
-<td data-line="518" class="code-line" dir="auto">classmethod</td>
-<td data-line="518" class="code-line" dir="auto">依 session ID 從磁碟載入並繼續</td>
+<tr data-line="582" class="code-line" dir="auto">
+<td data-line="582" class="code-line" dir="auto"><code>ResponseCache</code></td>
+<td data-line="582" class="code-line" dir="auto">class</td>
+<td data-line="582" class="code-line" dir="auto">持久化「key→答案」快取，問過的不再問</td>
 </tr>
-<tr data-line="519" class="code-line" dir="auto">
-<td data-line="519" class="code-line" dir="auto"><code>LLMAdapter</code></td>
-<td data-line="519" class="code-line" dir="auto">class (ABC)</td>
-<td data-line="519" class="code-line" dir="auto">Adapter 抽象基底類別</td>
+<tr data-line="583" class="code-line" dir="auto">
+<td data-line="583" class="code-line" dir="auto"><code>LLMSession</code></td>
+<td data-line="583" class="code-line" dir="auto">class</td>
+<td data-line="583" class="code-line" dir="auto">多輪對話，支援儲存 / 繼續 / 歷史壓縮</td>
 </tr>
-<tr data-line="520" class="code-line" dir="auto">
-<td data-line="520" class="code-line" dir="auto"><code>ChatGPTAdapter</code> / <code>GeminiAdapter</code> / <code>AnthropicAdapter</code></td>
-<td data-line="520" class="code-line" dir="auto">class</td>
-<td data-line="520" class="code-line" dir="auto">單次問答 OOP Adapter</td>
+<tr data-line="584" class="code-line" dir="auto">
+<td data-line="584" class="code-line" dir="auto"><code>LLMSession.resume</code></td>
+<td data-line="584" class="code-line" dir="auto">classmethod</td>
+<td data-line="584" class="code-line" dir="auto">依 session ID 從磁碟載入並繼續</td>
 </tr>
-<tr data-line="521" class="code-line" dir="auto">
-<td data-line="521" class="code-line" dir="auto"><code>load_api_key</code></td>
-<td data-line="521" class="code-line" dir="auto">function</td>
-<td data-line="521" class="code-line" dir="auto">從最近的 <code>.env</code> 讀取指定 key</td>
+<tr data-line="585" class="code-line" dir="auto">
+<td data-line="585" class="code-line" dir="auto"><code>LLMAdapter</code></td>
+<td data-line="585" class="code-line" dir="auto">class (ABC)</td>
+<td data-line="585" class="code-line" dir="auto">Adapter 抽象基底類別</td>
 </tr>
-<tr data-line="522" class="code-line" dir="auto">
-<td data-line="522" class="code-line" dir="auto"><code>list_chatgpt_models</code> / <code>_gemini_models</code> / <code>_anthropic_models</code></td>
-<td data-line="522" class="code-line" dir="auto">function</td>
-<td data-line="522" class="code-line" dir="auto">列出可用模型</td>
+<tr data-line="586" class="code-line" dir="auto">
+<td data-line="586" class="code-line" dir="auto"><code>ChatGPTAdapter</code> / <code>GeminiAdapter</code> / <code>AnthropicAdapter</code></td>
+<td data-line="586" class="code-line" dir="auto">class</td>
+<td data-line="586" class="code-line" dir="auto">單次問答 OOP Adapter</td>
 </tr>
-<tr data-line="523" class="code-line" dir="auto">
-<td data-line="523" class="code-line" dir="auto"><code>parse_openai_response</code> / <code>_openai_completion</code> / <code>_gemini_response</code> / <code>_anthropic_response</code></td>
-<td data-line="523" class="code-line" dir="auto">function</td>
-<td data-line="523" class="code-line" dir="auto">解析原始 SDK 回傳值</td>
+<tr data-line="587" class="code-line" dir="auto">
+<td data-line="587" class="code-line" dir="auto"><code>load_api_key</code></td>
+<td data-line="587" class="code-line" dir="auto">function</td>
+<td data-line="587" class="code-line" dir="auto">從最近的 <code>.env</code> 讀取指定 key</td>
 </tr>
-<tr data-line="524" class="code-line" dir="auto">
-<td data-line="524" class="code-line" dir="auto"><code>KeyMaterial</code></td>
-<td data-line="524" class="code-line" dir="auto">class</td>
-<td data-line="524" class="code-line" dir="auto">組合 provider + 解密策略，<code>resolve()</code> 取得明文金鑰</td>
+<tr data-line="588" class="code-line" dir="auto">
+<td data-line="588" class="code-line" dir="auto"><code>list_chatgpt_models</code> / <code>_gemini_models</code> / <code>_anthropic_models</code></td>
+<td data-line="588" class="code-line" dir="auto">function</td>
+<td data-line="588" class="code-line" dir="auto">列出可用模型</td>
 </tr>
-<tr data-line="525" class="code-line" dir="auto">
-<td data-line="525" class="code-line" dir="auto"><code>KeyMaterial.plain/aes/rsa</code></td>
-<td data-line="525" class="code-line" dir="auto">classmethod</td>
-<td data-line="525" class="code-line" dir="auto">具名建構子，常見情境一行建立 <code>KeyMaterial</code></td>
+<tr data-line="589" class="code-line" dir="auto">
+<td data-line="589" class="code-line" dir="auto"><code>parse_openai_response</code> / <code>_openai_completion</code> / <code>_gemini_response</code> / <code>_anthropic_response</code></td>
+<td data-line="589" class="code-line" dir="auto">function</td>
+<td data-line="589" class="code-line" dir="auto">解析原始 SDK 回傳值</td>
 </tr>
-<tr data-line="526" class="code-line" dir="auto">
-<td data-line="526" class="code-line" dir="auto"><code>EnvKeyProvider</code></td>
-<td data-line="526" class="code-line" dir="auto">class</td>
-<td data-line="526" class="code-line" dir="auto">從 <code>.env</code> 依 tag 提供（可能加密的）金鑰</td>
+<tr data-line="590" class="code-line" dir="auto">
+<td data-line="590" class="code-line" dir="auto"><code>KeyMaterial</code></td>
+<td data-line="590" class="code-line" dir="auto">class</td>
+<td data-line="590" class="code-line" dir="auto">組合 provider + 解密策略，<code>resolve()</code> 取得明文金鑰</td>
 </tr>
-<tr data-line="527" class="code-line" dir="auto">
-<td data-line="527" class="code-line" dir="auto"><code>PlainTextStrategy</code> / <code>AESDecryptStrategy</code> / <code>RSADecryptStrategy</code></td>
-<td data-line="527" class="code-line" dir="auto">class</td>
-<td data-line="527" class="code-line" dir="auto">解密策略</td>
+<tr data-line="591" class="code-line" dir="auto">
+<td data-line="591" class="code-line" dir="auto"><code>KeyMaterial.plain/aes/rsa</code></td>
+<td data-line="591" class="code-line" dir="auto">classmethod</td>
+<td data-line="591" class="code-line" dir="auto">具名建構子，常見情境一行建立 <code>KeyMaterial</code></td>
 </tr>
-<tr data-line="528" class="code-line" dir="auto">
-<td data-line="528" class="code-line" dir="auto"><code>aes_encrypt</code> / <code>rsa_encrypt</code></td>
-<td data-line="528" class="code-line" dir="auto">function</td>
-<td data-line="528" class="code-line" dir="auto">產生加密金鑰用的工具函式</td>
+<tr data-line="592" class="code-line" dir="auto">
+<td data-line="592" class="code-line" dir="auto"><code>EnvKeyProvider</code></td>
+<td data-line="592" class="code-line" dir="auto">class</td>
+<td data-line="592" class="code-line" dir="auto">從 <code>.env</code> 依 tag 提供（可能加密的）金鑰</td>
 </tr>
-<tr data-line="529" class="code-line" dir="auto">
-<td data-line="529" class="code-line" dir="auto"><code>ChatGPTModel</code> / <code>GeminiModel</code> / <code>AnthropicModel</code></td>
-<td data-line="529" class="code-line" dir="auto"><code>Literal</code></td>
-<td data-line="529" class="code-line" dir="auto">各平台模型名稱的型別提示</td>
+<tr data-line="593" class="code-line" dir="auto">
+<td data-line="593" class="code-line" dir="auto"><code>PlainTextStrategy</code> / <code>AESDecryptStrategy</code> / <code>RSADecryptStrategy</code></td>
+<td data-line="593" class="code-line" dir="auto">class</td>
+<td data-line="593" class="code-line" dir="auto">解密策略</td>
+</tr>
+<tr data-line="594" class="code-line" dir="auto">
+<td data-line="594" class="code-line" dir="auto"><code>aes_encrypt</code> / <code>rsa_encrypt</code></td>
+<td data-line="594" class="code-line" dir="auto">function</td>
+<td data-line="594" class="code-line" dir="auto">產生加密金鑰用的工具函式</td>
+</tr>
+<tr data-line="595" class="code-line" dir="auto">
+<td data-line="595" class="code-line" dir="auto"><code>ChatGPTModel</code> / <code>GeminiModel</code> / <code>AnthropicModel</code></td>
+<td data-line="595" class="code-line" dir="auto"><code>Literal</code></td>
+<td data-line="595" class="code-line" dir="auto">各平台模型名稱的型別提示</td>
 </tr>
 </tbody>
 </table>
-<hr data-line="531" class="code-line" dir="auto">
-<h2 data-line="533" class="code-line" dir="auto" id="套件依賴">套件依賴</h2>
-<pre><code data-line="535" class="code-line" dir="auto">python        &gt;= 3.11
+<hr data-line="597" class="code-line" dir="auto">
+<h2 data-line="599" class="code-line" dir="auto" id="套件依賴">套件依賴</h2>
+<pre><code data-line="601" class="code-line" dir="auto">python        &gt;= 3.11
 openai        &gt;= 2.0.0
 google-genai  &gt;= 1.0.0
 anthropic     &gt;= 0.25.0
 cryptography  &gt;= 42.0.0
 python-dotenv &gt;= 1.0.0
 </code></pre>
+<hr data-line="610" class="code-line" dir="auto">
+<h2 data-line="612" class="code-line" dir="auto" id="授權">授權</h2>
+<p data-line="614" class="code-line" dir="auto">本專案採 <a href="LICENSE" data-href="LICENSE">MIT License</a> 授權。</p>
 </div>
 
 </body>
