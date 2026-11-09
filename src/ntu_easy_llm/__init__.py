@@ -10,6 +10,8 @@ Features
 - Adapter pattern            : ChatGPTAdapter / GeminiAdapter / AnthropicAdapter
 - Response normalisation     : parse_openai_response / parse_gemini_response / …
 - Secure key management      : AES / RSA encrypted keys via .env
+- Agent API (0.5.0)          : ntu_easy_llm.agent.chat — multi-turn + tool calling
+                               for openai / anthropic / gemini / openai_compatible
 
 Quick start
 -----------
@@ -68,8 +70,17 @@ _NAME_TO_MODULE: dict[str, str] = {
 }
 
 
+# Submodules reachable as attributes (``ntu_easy_llm.agent``) without an
+# explicit ``import ntu_easy_llm.agent``.
+_LAZY_MODULES: tuple[str, ...] = ("agent",)
+
+
 def __getattr__(name: str):
     """Resolve a public name to its submodule on first access, then cache it."""
+    if name in _LAZY_MODULES:
+        module = importlib.import_module(f".{name}", __name__)
+        globals()[name] = module
+        return module
     module_path = _NAME_TO_MODULE.get(name)
     if module_path is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
