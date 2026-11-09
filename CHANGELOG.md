@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-09
+
+### Added
+- **Agent API** — new module `ntu_easy_llm.agent` (also reachable lazily as
+  `ntu_easy_llm.agent`): `chat(provider, model, messages, tools=None, *,
+  api_key, base_url, max_tokens, temperature, timeout, session, extra_headers,
+  extra_body) -> ChatReply` with `ChatReply(text, tool_calls=[ToolCall(id,
+  name, arguments: dict)], usage=Usage(input_tokens, output_tokens), raw,
+  stop_reason)`, plus `probe(...) -> str | None` for "test the settings" buttons.
+- Providers for the agent API: `openai`, `anthropic` (native tool use),
+  `gemini` (OpenAI-compatible endpoint) and **`openai_compatible`** taking any
+  `base_url` (company gateways, Ollama, LM Studio, vLLM).
+- Typed errors `LLMHTTPError` (`.status`, `.body`), `LLMConnectionError`,
+  `LLMResponseError`; message converters `to_openai_messages` /
+  `to_anthropic_messages`.
+- Offline tests `tests/test_agent.py` (fake HTTP session, no network).
+
+### Unchanged
+- Every existing public function, class and signature (`ask*`, `ask_many`,
+  `LLMSession`, adapters, key management) is byte-for-byte the same.
+
+## [0.4.3] - 2026-06-29
+
+(Heading added in 0.5.0: these entries sat under "Unreleased" but shipped in
+the `ntu_easy_llm-0.4.3` release.)
+
 ### Added
 - `ask_many()` — batch helper that runs many prompts with **bounded
   concurrency** (`max_concurrent`), per-prompt retry with exponential backoff,

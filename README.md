@@ -1,6 +1,6 @@
 # ntu_easy_llm
 
-> **v0.4.3** · Python 3.11+
+> **v0.5.0** · Python 3.11+
 
 針對 **ChatGPT**、**Gemini**、**Anthropic Claude** 三大 LLM 服務的輕量 Python 封裝套件。
 
@@ -11,6 +11,49 @@
 - **加密金鑰** — 支援 AES / RSA 加密的 API 金鑰存放於 `.env`。
 - **Adapter 模式** — OOP 風格封裝，方便依賴注入與測試替換。
 - **Lazy 載入** — `import ntu_easy_llm` 本身極輕量；各平台的 SDK 只在首次用到時才載入。
+- **Agent API（0.5.0）** — `ntu_easy_llm.agent.chat`：多輪訊息＋工具呼叫（tool calling）＋用量，OpenAI／Anthropic／Gemini／任何 OpenAI 相容端點（公司閘道、Ollama）同一個呼叫方式。見 [Agent API](#agent-api工具呼叫)。
+
+---
+
+## Agent API（工具呼叫）
+
+> 0.5.0 新增。舊的 `ask*`、`LLMSession`、Adapter 完全不變；這是另外一組給「agent host」用的 API。
+
+`ask*` 只回一段 `str`。要讓 AI 替你「按按鈕」（呼叫工具）就要：多輪訊息、工具定義、AI 想呼叫哪些工具、用了多少 token。
+`ntu_easy_llm.agent` 給四家同一個呼叫方式：
+
+```python
+from ntu_easy_llm.agent import chat, probe, Tool
+
+tools = [Tool("money_add", "記一筆支出",
+              {"type": "object", "properties": {"amount": {"type": "number"}}, "required": ["amount"]})]
+
+reply = chat("openai", "gpt-4.1-mini",
+             [{"role": "system", "content": "你是記帳助理"},
+              {"role": "user", "content": "幫我記 80 元咖啡"}],
+             tools=tools, api_key="sk-...")
+
+reply.text         # AI 的文字（只呼叫工具時是 ""）
+reply.tool_calls   # [ToolCall(id="call_1", name="money_add", arguments={"amount": 80})]
+reply.usage        # Usage(input_tokens=..., output_tokens=...)
+
+# 把工具結果接回去，再問一次
+history = [..., {"role": "assistant", "content": "", "tool_calls": reply.tool_calls},
+           {"role": "tool", "tool_call_id": "call_1", "name": "money_add", "content": "記好了"}]
+```
+
+| provider | 端點 | 備註 |
+|---|---|---|
+| `openai` | `https://api.openai.com/v1` | Chat Completions；長度上限送 `max_completion_tokens` |
+| `anthropic` | `https://api.anthropic.com` | Messages API 原生 tool use；`system` 自動拆出來、連續的工具結果自動併成一則 |
+| `gemini` | Gemini 的 OpenAI 相容端點 | 同一把 Gemini API key |
+| `openai_compatible` | **一定要給 `base_url`** | 公司閘道、Ollama（`http://localhost:11434/v1`，`api_key` 可空）、LM Studio、vLLM |
+
+- `probe(provider, model, api_key=..., base_url=...)`：打一句測試，`None`＝通了，否則回一句原因（不丟例外）。適合安裝精靈的「測一下」。
+- 錯誤有型別：`LLMHTTPError`（`.status`、`.body`）、`LLMConnectionError`、`LLMResponseError`，呼叫端可以自己翻成人話。
+- 直接打 HTTP（標準函式庫 urllib），不經各家 SDK：`import ntu_easy_llm.agent` 不會載入 openai／anthropic／google-genai。
+  測試時傳 `session=`（任何有 requests 風格 `post()` 的物件，例如 `requests.Session()` 或假的）。
+- 不讀 `.env`：`api_key` 由呼叫端給（可以用 `KeyMaterial`／`load_api_key` 拿）。
 
 ---
 
@@ -594,6 +637,8 @@ text = parse_openai_response(resp)
 | `PlainTextStrategy` / `AESDecryptStrategy` / `RSADecryptStrategy` | class | 解密策略                |
 | `aes_encrypt` / `rsa_encrypt` | function    | 產生加密金鑰用的工具函式                            |
 | `ChatGPTModel` / `GeminiModel` / `AnthropicModel` | `Literal` | 各平台模型名稱的型別提示             |
+| `agent.chat` / `agent.probe`  | function    | 多輪＋工具呼叫＋用量，四種 provider 同一個呼叫方式（0.5.0） |
+| `agent.Tool` / `ToolCall` / `ChatReply` / `Usage` | dataclass | Agent API 的資料型別 |
 
 ---
 
