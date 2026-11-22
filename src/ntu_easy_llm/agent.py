@@ -54,6 +54,9 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from .errors import ErrorKind
+from .errors import classify as _classify
+
 __all__ = [
     "Tool", "ToolCall", "Usage", "ChatReply",
     "LLMError", "LLMHTTPError", "LLMConnectionError", "LLMResponseError",
@@ -120,29 +123,64 @@ class ChatReply:
     usage: Usage = field(default_factory=Usage)
     raw: Any = None                 # the decoded JSON body, for anything not normalised here
     stop_reason: str = ""           # finish_reason (OpenAI-style) / stop_reason (Anthropic)
+    # 0.6: normalised finish ("" | "stop" | "length" | "thinking" | "tool_calls", see
+    # ntu_easy_llm.types.normalize_finish) and non-fatal notes from the adapter.
+    finish: str = ""
+    warnings: list[str] = field(default_factory=list)
 
 
 class LLMError(Exception):
-    """Base class for every error raised by :func:`chat`."""
+    """Base class for every error raised by :func:`chat`.
+
+    0.6 adds three attributes (class defaults, so old code that raises these
+    errors keeps working): ``kind`` (an :class:`~ntu_easy_llm.errors.ErrorKind`),
+    ``retry_after`` (seconds or ``None``) and ``profile_id`` (which configured
+    profile failed; ``""`` when not known).
+    """
+
+    kind: ErrorKind = ErrorKind.UNKNOWN
+    retry_after: float | None = None
+    profile_id: str = ""
+
+    def __init__(self, *args: Any, kind: ErrorKind | str | None = None,
+                 retry_after: float | None = None, profile_id: str = ""):
+        super().__init__(*args)
+        if kind is not None:
+            self.kind = ErrorKind(kind)
+        if retry_after is not None:
+            self.retry_after = float(retry_after)
+        if profile_id:
+            self.profile_id = str(profile_id)
 
 
 class LLMHTTPError(LLMError):
     """The provider answered with a non-200 status."""
 
-    def __init__(self, status: int, body: str = "", provider: str = ""):
+    def __init__(self, status: int, body: str = "", provider: str = "", *,
+                 headers: Mapping[str, str] | None = None, kind: ErrorKind | str | None = None,
+                 retry_after: float | None = None, profile_id: str = ""):
         self.status = int(status)
         self.body = body or ""
         self.provider = provider
+        self.headers = {str(k): str(v) for k, v in (headers.items() if headers else ())}
+        guessed, guessed_wait = _classify(provider, status=self.status, body=self.body, headers=self.headers)
         snippet = " ".join(self.body.split())[:200]
-        super().__init__(f"{provider or 'LLM'} HTTP {self.status}" + (f": {snippet}" if snippet else ""))
+        super().__init__(f"{provider or 'LLM'} HTTP {self.status}" + (f": {snippet}" if snippet else ""),
+                         kind=kind if kind is not None else guessed,
+                         retry_after=retry_after if retry_after is not None else guessed_wait,
+                         profile_id=profile_id)
 
 
 class LLMConnectionError(LLMError):
     """Could not reach the endpoint (DNS, refused, timeout, TLS…)."""
 
+    kind = ErrorKind.CONNECTION
+
 
 class LLMResponseError(LLMError):
     """The endpoint answered 200 but the body is not the expected shape."""
+
+    kind = ErrorKind.BAD_RESPONSE
 
 
 # =============================================================================
@@ -248,9 +286,10 @@ def to_anthropic_messages(messages: Sequence[Any]) -> tuple[str, list[dict]]:
 # =============================================================================
 
 class _Response:
-    def __init__(self, status: int, text: str):
+    def __init__(self, status: int, text: str, headers: Mapping[str, str] | None = None):
         self.status_code = status
         self.text = text
+        self.headers = dict(headers or {})
 
     def json(self) -> Any:
         return json.loads(self.text)
@@ -266,10 +305,17 @@ class _UrllibSession:
         req = urllib.request.Request(url, data=data, method="POST", headers=dict(headers or {}))
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return _Response(resp.status, resp.read().decode("utf-8", "replace"))
+                return _Response(resp.status, resp.read().decode("utf-8", "replace"), _headers_of(resp))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace") if e.fp is not None else ""
-            return _Response(e.code, body)
+            return _Response(e.code, body, _headers_of(e))
+
+
+def _headers_of(obj: Any) -> dict[str, str] | None:
+    """Response headers as a plain dict (``None`` when the object has none)."""
+    h = getattr(obj, "headers", None)
+    items = getattr(h, "items", None)
+    return {str(k): str(v) for k, v in items()} if callable(items) else None
 
 
 def _post(session: Any, url: str, body: dict, headers: dict, timeout: float, provider: str) -> Any:
@@ -278,10 +324,13 @@ def _post(session: Any, url: str, body: dict, headers: dict, timeout: float, pro
     except LLMError:
         raise
     except Exception as e:  # noqa: BLE001 — urllib / requests / socket errors all mean "unreachable"
-        raise LLMConnectionError(f"cannot reach {url}: {type(e).__name__}: {e}") from e
+        raise LLMConnectionError(f"cannot reach {url}: {type(e).__name__}: {e}",
+                                 kind=_classify(provider, exc=e)[0]) from e
     status = int(getattr(resp, "status_code", 0) or 0)
     if status != 200:
-        raise LLMHTTPError(status, getattr(resp, "text", "") or "", provider)
+        headers = getattr(resp, "headers", None)
+        raise LLMHTTPError(status, getattr(resp, "text", "") or "", provider,
+                           headers=headers if isinstance(headers, Mapping) else None)
     try:
         return resp.json()
     except ValueError as e:
