@@ -7,12 +7,13 @@
     ntu_easy_llm models --config FILE [--profile P] [--json]
     ntu_easy_llm probe  --config FILE [--profile P] [--send] [--json]
     ntu_easy_llm chat   --config FILE [--profile P] [--system TEXT] [--max-tokens N]
-                        [--temperature T] [--stream] "text"
+                        [--temperature T] [--stream] [--chain C] "text"
 
 ``--config`` is a profiles file (JSON, or YAML with ``ntu_easy_llm[yaml]``);
 ``--profile`` defaults to the file's ``default``. Keys come from the
 environment variables / secret references the file names — never from the
-command line. ``chat`` runs one profile (chains need the router).
+command line. ``chat`` runs one profile, or with ``--chain`` a waterfall chain
+(``ProfileSet.router``); the member that answered and any switch notice go to stderr.
 
 Exit codes: 0 ok, 1 the provider or network failed (or probe said not ok),
 2 configuration problem.
@@ -62,6 +63,8 @@ def _parser() -> argparse.ArgumentParser:
     ch.add_argument("--max-tokens", type=int, default=None)
     ch.add_argument("--temperature", type=float, default=None)
     ch.add_argument("--stream", action="store_true", help="print the reply as it arrives")
+    ch.add_argument("--chain", default=None,
+                    help="run a chain (waterfall) from the file instead of one profile; prints which member answered")
     return p
 
 
@@ -135,7 +138,11 @@ def _cmd_probe(args: argparse.Namespace) -> int:
 
 
 def _cmd_chat(args: argparse.Namespace) -> int:
-    adapter = _adapter(args)
+    if args.chain:
+        from .profiles import load
+        adapter = load(args.config).router(args.chain)
+    else:
+        adapter = _adapter(args)
     messages = []
     if args.system:
         messages.append({"role": "system", "content": args.system})
@@ -152,6 +159,11 @@ def _cmd_chat(args: argparse.Namespace) -> int:
         _out(f"warning: {w}", err=True)
     if reply.finish in ("length", "thinking"):
         _out(f"note: the reply stopped early ({reply.finish})", err=True)
+    if args.chain:
+        if getattr(reply, "notice", ""):
+            _out(f"notice: {reply.notice}", err=True)
+        if getattr(reply, "profile_id", ""):
+            _out(f"[{reply.profile_id}]", err=True)
     return 0
 
 

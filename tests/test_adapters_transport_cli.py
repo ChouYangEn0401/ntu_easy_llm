@@ -7,6 +7,7 @@ blocked for the duration of the tests.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -248,8 +249,10 @@ def test_cli_failures_and_exit_codes(config, tmp_path, capsys):
 
 
 def test_cli_catalog_runs_offline_in_a_fresh_process():
+    # The child writes UTF-8 (some availability notes are bilingual); read it as UTF-8 whatever the console code page is.
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
     out = subprocess.run([sys.executable, "-m", "ntu_easy_llm.cli", "catalog", "--locale", "en"],
-                         capture_output=True, text=True, timeout=60)
+                         capture_output=True, text=True, encoding="utf-8", env=env, timeout=60)
     assert out.returncode == 0 and "local/ollama" in out.stdout
 
 
