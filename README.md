@@ -642,6 +642,44 @@ text = parse_openai_response(resp)
 
 ---
 
+## 備援路由（waterfall）、LLOP 與訂閱來源（0.6 預發布）
+
+> 介面與設定格式見 [docs/design/20261123-v06-architecture.md](docs/design/20261123-v06-architecture.md) 第 3.7、3.9 節。
+
+**備援路由**：`ntu_easy_llm.router.Router` 把好幾個來源包成一個，用起來跟單一 adapter 一樣——主要的不能用（額度用完、金鑰失效、429 重試後仍失敗）才換下一個，一般錯誤照丟。順序與觸發條件全部寫在設定檔，函式庫不預設任何供應商的先後；沒設定 `waterfall`＝不啟動。
+
+```python
+from ntu_easy_llm import load_profiles
+from ntu_easy_llm.router import FallbackRequired
+
+ps = load_profiles({
+    "default": "chat",
+    "profiles": {
+        "primary": {"source": "remote/api_key/openai_compatible", "base_url": "https://llm.example.test/v1",
+                    "api_key_env": "EXAMPLE_PRIMARY_KEY", "model": "example-model"},
+        "backup":  {"source": "local/ollama", "base_url": "http://127.0.0.1:11434", "model": "example-model"},
+    },
+    "chains": {"chat": {"members": ["primary", "backup"], "waterfall": {"mode": "auto"}}},
+})
+llm = ps.router("chat")                       # 也可以給單一 profile id（＝不備援）
+r = llm.chat([{"role": "user", "content": "你好"}])
+print(r.text, r.profile_id, r.notice)         # 換過來源時 notice＝「已改用 backup（原因：額度用完）」
+llm.status()                                  # 每個成員的冷卻狀態（給 UI）
+
+# mode="ask"：觸發時丟 FallbackRequired，由呼叫端決定
+try:
+    r = llm.chat(messages)
+except FallbackRequired as e:
+    r = llm.resume(e.pending, use=e.pending.candidates[0])   # use=None＝放棄、丟原本的錯
+```
+
+**LLOP**（`remote/api_key/llop`，本地模型發布服務）：要裝 `ntu_easy_llm[llop]`。LLOP 還沒上 PyPI，目前從 LLOP 的 GitHub release wheel 安裝（`pip install "<wheel 檔>[sdk]"`），或從原始碼 `pip install -e "<LLOP 的資料夾>[sdk]"`；沒裝這個 extra 的人完全不受影響（`import ntu_easy_llm` 不會載入 `llmop`）。
+設定只寫 `"llop_profile": "<SDK 設定檔名>"`；API key、簽章私鑰、釘選都在 LLOP SDK 自己的設定檔裡（先在終端機跑 `llmop client enroll …`）。API 連結換了會丟 `kind == "link_changed"`，向服務提供者拿新連結後 `llmop client set-link`。
+
+**訂閱來源**（`remote/subscription/claude`、`github_copilot`、`chatgpt`）：用這台電腦已登入的官方 CLI，另外安裝對應的登入套件（`claude-subscription`、`github_copilot_login`、`chatgpt_login`）。**只給本人使用**（用的是你個人的訂閱，不要拿來服務別人）。只能文字進出：帶 `tools` 呼叫會丟 `tools_unsupported`，不會默默忽略。
+
+---
+
 ## 套件依賴
 
 ```
