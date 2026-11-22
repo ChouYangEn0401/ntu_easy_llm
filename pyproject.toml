@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "周暘恩 (Anthony Chou)", email = "207549986+ChouYangEn0401@users.noreply.github.com" },
+    { name = "周暘恩 (Anthony Chou)" },
 ]
 dependencies = [
     "openai>=2.0.0",
