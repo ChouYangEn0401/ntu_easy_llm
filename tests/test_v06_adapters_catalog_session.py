@@ -168,8 +168,8 @@ def test_catalog_tree_shape():
 
 def test_catalog_availability_and_llop_extra(monkeypatch):
     llop = find("remote/api_key/llop", locale="en")
-    assert llop.extra == "llop" and not llop.available
     import importlib.util
+    assert llop.extra == "llop" and llop.available == (importlib.util.find_spec("llmop") is not None)
     if importlib.util.find_spec("llmop") is None:
         assert "ntu_easy_llm[llop]" in llop.unavailable_reason
         assert list_llop_profiles() == []
