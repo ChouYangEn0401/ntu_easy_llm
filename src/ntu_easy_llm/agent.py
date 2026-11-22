@@ -231,13 +231,24 @@ def _get(m: Any, key: str, default: Any = None) -> Any:
     return getattr(m, key, default)
 
 
+def _images(m: Any) -> list:
+    """``images`` of a message (0.6 :class:`~ntu_easy_llm.types.ImagePart` objects); ``[]`` when none."""
+    return list(_get(m, "images") or [])
+
+
 def to_openai_messages(messages: Sequence[Any]) -> list[dict]:
-    """Neutral messages → Chat Completions ``messages``."""
+    """Neutral messages → Chat Completions ``messages`` (one output per input message).
+
+    A user message with ``images`` (0.6 ``ImagePart``) becomes a list of
+    ``text`` + ``image_url`` (data URL) parts; messages without images keep the
+    plain-string ``content`` they always had.
+    """
     out: list[dict] = []
     for m in messages:
         role = _get(m, "role", "user")
         content = _get(m, "content", "") or ""
         calls = [_call(c) for c in (_get(m, "tool_calls") or [])]
+        images = _images(m)
         if role == "tool":
             out.append({"role": "tool", "tool_call_id": _get(m, "tool_call_id", "") or "", "content": content})
         elif role == "assistant" and calls:
@@ -245,6 +256,10 @@ def to_openai_messages(messages: Sequence[Any]) -> list[dict]:
                 {"id": c.id, "type": "function",
                  "function": {"name": c.name, "arguments": json.dumps(c.arguments, ensure_ascii=False)}}
                 for c in calls]})
+        elif images:
+            parts: list[dict] = [{"type": "text", "text": content}] if content else []
+            parts += [{"type": "image_url", "image_url": {"url": im.to_data_url()}} for im in images]
+            out.append({"role": role, "content": parts})
         else:
             out.append({"role": role, "content": content})
     return out
@@ -276,6 +291,12 @@ def to_anthropic_messages(messages: Sequence[Any]) -> tuple[str, list[dict]]:
             blocks: list[dict] = [{"type": "text", "text": content}] if content else []
             blocks += [{"type": "tool_use", "id": c.id, "name": c.name, "input": c.arguments} for c in calls]
             out.append({"role": "assistant", "content": blocks})
+        elif role == "user" and _images(m):
+            blocks = [{"type": "image", "source": {"type": "base64", "media_type": im.mime,
+                                                   "data": im.to_base64()}} for im in _images(m)]
+            if content:
+                blocks.append({"type": "text", "text": content})
+            out.append({"role": "user", "content": blocks})
         else:
             out.append({"role": "assistant" if role == "assistant" else "user", "content": content})
     return system, out
@@ -341,6 +362,17 @@ def _post(session: Any, url: str, body: dict, headers: dict, timeout: float, pro
 # Provider calls
 # =============================================================================
 
+def _openai_tools(tools: Sequence[Tool]) -> list[dict]:
+    """:class:`Tool` list → Chat Completions ``tools``."""
+    return [{"type": "function", "function": {"name": t.name, "description": t.description,
+                                              "parameters": t.parameters}} for t in tools]
+
+
+def _anthropic_tools(tools: Sequence[Tool]) -> list[dict]:
+    """:class:`Tool` list → Messages API ``tools``."""
+    return [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
+
+
 def _chat_openai_style(provider: str, model: str, messages, tools, *, api_key: str, base_url: str,
                        max_tokens: int | None, temperature: float | None, timeout: float, session,
                        extra_headers, extra_body) -> ChatReply:
@@ -351,14 +383,18 @@ def _chat_openai_style(provider: str, model: str, messages, tools, *, api_key: s
     if temperature is not None:
         body["temperature"] = temperature
     if tools:
-        body["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description,
-                                                           "parameters": t.parameters}} for t in tools]
+        body["tools"] = _openai_tools(tools)
     body.update(extra_body or {})
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     headers.update(extra_headers or {})
     data = _post(session, f"{base_url}/chat/completions", body, headers, timeout, provider)
+    return _openai_reply(provider, data)
+
+
+def _openai_reply(provider: str, data: Any) -> ChatReply:
+    """A decoded Chat Completions body → :class:`ChatReply` (shared with the 0.6 adapters)."""
     try:
         choice = data["choices"][0]
         msg = choice["message"]
@@ -387,12 +423,16 @@ def _chat_anthropic(model: str, messages, tools, *, api_key: str, base_url: str,
     if temperature is not None:
         body["temperature"] = temperature
     if tools:
-        body["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters}
-                         for t in tools]
+        body["tools"] = _anthropic_tools(tools)
     body.update(extra_body or {})
     headers = {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
     headers.update(extra_headers or {})
     data = _post(session, f"{base_url}/v1/messages", body, headers, timeout, "anthropic")
+    return _anthropic_reply(data)
+
+
+def _anthropic_reply(data: Any) -> ChatReply:
+    """A decoded Messages API body → :class:`ChatReply` (shared with the 0.6 adapters)."""
     try:
         blocks = data["content"]
         text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
