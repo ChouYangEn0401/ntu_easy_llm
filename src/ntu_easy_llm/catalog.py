@@ -21,7 +21,7 @@ Building the catalog never imports a provider SDK or an optional extra.
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterator
 
 __all__ = ["FieldSpec", "SourceNode", "catalog", "find", "leaves", "list_llop_profiles", "FIELD_KINDS"]
@@ -114,6 +114,7 @@ _T: dict[str, dict[str, str]] = {
         "remote/api_key/llop": "LLOP（本地模型發布服務）",
         "remote/subscription/claude": "Claude（訂閱）", "remote/subscription/github_copilot": "GitHub Copilot（訂閱）",
         "remote/subscription/chatgpt": "ChatGPT（訂閱）",
+        "desc.subscription": "只給本人使用：用這台電腦上你自己登入的訂閱（官方 CLI），不要拿來服務別人。",
         "f.base_url": "伺服器網址", "f.model": "模型", "f.secret": "API 金鑰",
         "f.secret.help": "金鑰由你的程式存進保管箱或環境變數；設定檔裡只寫引用（api_key_env 或 secret）。",
         "f.llop_profile": "LLOP 設定檔",
@@ -137,6 +138,8 @@ _T: dict[str, dict[str, str]] = {
         "remote/subscription/claude": "Claude (subscription)",
         "remote/subscription/github_copilot": "GitHub Copilot (subscription)",
         "remote/subscription/chatgpt": "ChatGPT (subscription)",
+        "desc.subscription": "For your own use only: your personal subscription signed in on this machine "
+                             "(official CLI); do not use it to serve other people.",
         "f.base_url": "Server URL", "f.model": "Model", "f.secret": "API key",
         "f.secret.help": "Your program stores the key in a vault or environment variable; "
                          "the config holds only a reference (api_key_env or secret).",
@@ -249,8 +252,9 @@ def catalog(*, locale: str = "zh-TW") -> SourceNode:
         api_children.append(_leaf(path, locale, fields, _details(locale, local=False)))
 
     sub_children = [
-        _leaf(f"remote/subscription/{p}", locale, (_model(locale, required=False),),
-              _details(locale, local=False, subscription=True, effort=p in ("claude", "chatgpt")))
+        replace(_leaf(f"remote/subscription/{p}", locale, (_model(locale, required=False),),
+                      _details(locale, local=False, subscription=True, effort=p in ("claude", "chatgpt"))),
+                description=_t(locale, "desc.subscription"))
         for p in _SUBSCRIPTION
     ]
 

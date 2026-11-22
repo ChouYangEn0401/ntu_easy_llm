@@ -116,6 +116,11 @@ AdapterFactory = Callable[..., Adapter]
 
 # source path -> "module:attribute" (imported on first use)
 _BUILTIN: dict[str, str] = {
+    "remote/api_key/llop": "ntu_easy_llm.adapters.llop:from_profile",
+    "remote/subscription/claude": "ntu_easy_llm.adapters.subscription:claude",
+    "remote/subscription/github_copilot": "ntu_easy_llm.adapters.subscription:github_copilot",
+    "remote/subscription/chatgpt": "ntu_easy_llm.adapters.subscription:chatgpt",
+
     "local/fake": "ntu_easy_llm.adapters.fake:from_profile",
 }
 
