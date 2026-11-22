@@ -1,0 +1,26 @@
+{
+  "schema": "verifylist/1",
+  "items": [
+    {
+      "id": "v06-full-suite",
+      "what": "Whole offline test suite passes (no network, no real keys)",
+      "run": ["python", "-m", "pytest", "-q"],
+      "cwd": ".", "env": {}, "expect": "exit 0", "needs": [], "since": "2026-11-23",
+      "status": "pass", "last_run": "2026-11-23", "last_result": "147 passed"
+    },
+    {
+      "id": "v06-import-no-sdk",
+      "what": "Importing the 0.6 modules loads no provider SDK and not the LLOP SDK",
+      "run": ["python", "-c", "import sys, ntu_easy_llm, ntu_easy_llm.types, ntu_easy_llm.profiles, ntu_easy_llm.conversation, ntu_easy_llm.catalog, ntu_easy_llm.adapters.base; assert not {'openai','anthropic','google.genai','llmop'} & set(sys.modules)"],
+      "cwd": ".", "env": {}, "expect": "exit 0", "needs": [], "since": "2026-11-23",
+      "status": "pass", "last_run": "2026-11-23", "last_result": "exit 0"
+    },
+    {
+      "id": "v06-old-api-intact",
+      "what": "0.4/0.5 public API still importable",
+      "run": ["python", "-c", "from ntu_easy_llm import ask, LLMSession; from ntu_easy_llm.agent import chat, probe, Tool"],
+      "cwd": ".", "env": {}, "expect": "exit 0", "needs": [], "since": "2026-11-23",
+      "status": "pass", "last_run": "2026-11-23", "last_result": "exit 0"
+    }
+  ]
+}

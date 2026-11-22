@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (0.6.0.dev0 — interface freeze; see `docs/design/20261123-v06-architecture.md`)
+- `ntu_easy_llm.types`: provider-neutral `Message` and `ImagePart` (repr never
+  prints image bytes), `as_message` / `as_messages` (dicts, objects, OpenAI /
+  Anthropic content parts), `normalize_finish`; re-exports `Tool`, `ToolCall`,
+  `Usage`, `ChatReply` (the same classes as `ntu_easy_llm.agent`).
+- `ChatReply.finish` (`"" | "stop" | "length" | "thinking" | "tool_calls"`) and
+  `ChatReply.warnings`, both with defaults.
+- `ntu_easy_llm.errors`: `ErrorKind`, the generic `classify()` rule set with
+  `register_classifier()` for provider rules, `parse_retry_after`,
+  `describe_kind` (zh-TW / en), `ConfigError`, `AdapterNotFound`.
+- `LLMError` and its subclasses gain `.kind`, `.retry_after`, `.profile_id`
+  (class defaults + keyword-only constructor arguments); `LLMHTTPError`
+  classifies itself and keeps `.headers`; `agent.chat` now reports timeouts as
+  `kind == TIMEOUT` and reads `Retry-After`.
+- `ntu_easy_llm.profiles`: `Profile`, `ProfileSet`, `ChainSpec`, `SecretRef`,
+  `load()` for dicts, JSON and YAML. Configs may only *reference* keys
+  (`api_key_env`, `secret: "<scheme>:<name>"`); a literal key raises
+  `ConfigError` without echoing it.
+- `ntu_easy_llm.adapters`: the `Adapter` protocol, `Capabilities`, `ModelInfo`,
+  `ProbeResult`, a registry with the `ntu_easy_llm.adapters` entry point group,
+  and `FakeAdapter` (`local/fake`) — scripted replies and errors of every kind
+  for downstream tests.
+- `ntu_easy_llm.catalog`: the source tree (`local/*`, `remote/api_key/*`
+  incl. `llop`, `remote/subscription/{claude,github_copilot,chatgpt}`) with
+  field specs and per-machine availability.
+- `ntu_easy_llm.conversation` (optional): `ChatSession`, `SessionStore`,
+  `MemorySessionStore`, `JsonlSessionStore`.
+- `ntu_easy_llm.waterfall`: fallback-chain types and JSON config format
+  (`WaterfallPolicy`, events, `ChatResult`, `PendingFallback`,
+  `FallbackRequired`, `WaterfallExhausted`). No config = off. The routing
+  itself comes in a later 0.6 pre-release.
+- Extra `yaml` (PyYAML); `dev` now includes PyYAML for the tests.
+
+### Unchanged
+- Every 0.4 / 0.5 public name and signature (`ask*`, `ask_many`, `LLMSession`,
+  `LLMAdapter` family, `KeyMaterial`, `agent.chat` / `agent.probe`). Importing
+  any 0.6 module still loads no provider SDK.
+
 ## [0.5.0] - 2026-11-09
 
 ### Added

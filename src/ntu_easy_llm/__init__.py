@@ -12,6 +12,11 @@ Features
 - Secure key management      : AES / RSA encrypted keys via .env
 - Agent API (0.5.0)          : ntu_easy_llm.agent.chat — multi-turn + tool calling
                                for openai / anthropic / gemini / openai_compatible
+- 0.6 contract (dev)         : neutral Message/ImagePart (types), ErrorKind (errors),
+                               Profile/ProfileSet + load_profiles (profiles), the
+                               Adapter protocol + registry (adapters), the source
+                               catalog (catalog), optional ChatSession + stores
+                               (conversation), waterfall types (waterfall)
 
 Quick start
 -----------
@@ -61,6 +66,18 @@ _LAZY_SUBMODULES: dict[str, tuple[str, ...]] = {
         "PlainTextStrategy", "AESDecryptStrategy", "RSADecryptStrategy",
         "aes_encrypt", "rsa_encrypt",
     ),
+    # 0.6 contract
+    ".types": ("Message", "ImagePart"),
+    ".errors": ("ErrorKind", "ConfigError"),
+    ".profiles": ("Profile", "ProfileSet"),
+    ".adapters.base": ("get_adapter",),
+    ".conversation": ("ChatSession",),
+    ".waterfall": ("WaterfallPolicy",),
+}
+
+# public name -> (submodule, attribute) when the two names differ
+_ALIASES: dict[str, tuple[str, str]] = {
+    "load_profiles": (".profiles", "load"),
 }
 
 _NAME_TO_MODULE: dict[str, str] = {
@@ -72,7 +89,9 @@ _NAME_TO_MODULE: dict[str, str] = {
 
 # Submodules reachable as attributes (``ntu_easy_llm.agent``) without an
 # explicit ``import ntu_easy_llm.agent``.
-_LAZY_MODULES: tuple[str, ...] = ("agent",)
+_LAZY_MODULES: tuple[str, ...] = (
+    "agent", "types", "errors", "profiles", "adapters", "catalog", "conversation", "waterfall",
+)
 
 
 def __getattr__(name: str):
@@ -81,12 +100,15 @@ def __getattr__(name: str):
         module = importlib.import_module(f".{name}", __name__)
         globals()[name] = module
         return module
-    module_path = _NAME_TO_MODULE.get(name)
+    if name in _ALIASES:
+        module_path, attr = _ALIASES[name]
+    else:
+        module_path, attr = _NAME_TO_MODULE.get(name), name
     if module_path is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
     module = importlib.import_module(module_path, __name__)
-    value = getattr(module, name)
+    value = getattr(module, attr)
     globals()[name] = value  # cache: subsequent lookups skip __getattr__
     return value
 
@@ -119,6 +141,13 @@ if TYPE_CHECKING:
         PlainTextStrategy, AESDecryptStrategy, RSADecryptStrategy,
         aes_encrypt, rsa_encrypt,
     )
+    from .types import Message, ImagePart
+    from .errors import ErrorKind, ConfigError
+    from .profiles import Profile, ProfileSet
+    from .profiles import load as load_profiles
+    from .adapters.base import get_adapter
+    from .conversation import ChatSession
+    from .waterfall import WaterfallPolicy
 
 
 __all__ = [
@@ -178,6 +207,18 @@ __all__ = [
     "RSADecryptStrategy",
     "aes_encrypt",
     "rsa_encrypt",
+
+    # 0.6 contract (see docs/design/20261123-v06-architecture.md)
+    "Message",
+    "ImagePart",
+    "ErrorKind",
+    "ConfigError",
+    "Profile",
+    "ProfileSet",
+    "load_profiles",
+    "get_adapter",
+    "ChatSession",
+    "WaterfallPolicy",
 
     # meta
     "__version__",
