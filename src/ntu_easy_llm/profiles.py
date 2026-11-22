@@ -292,13 +292,23 @@ class ProfileSet:
     def adapter(self, name: str | None = None, *, http: Any = None) -> Any:
         """The adapter for one *profile* (``None`` → default, which must be a profile).
 
-        Chains need the router (a later 0.6 pre-release); asking for one here raises ConfigError.
+        Chains are run by the router; asking for one here raises ConfigError (use :meth:`router`).
         """
         name = name or self.default
         if name in self.chains:
-            raise ConfigError(f"{name!r} is a chain; chains are run by the router, not a single adapter")
+            raise ConfigError(f"{name!r} is a chain; use ProfileSet.router({name!r}) to run it")
         from .adapters.base import get_adapter
         return get_adapter(self.get(name), http=http, environ=self.environ, resolve_secret=self.resolve_secret)
+
+    def router(self, name: str | None = None, *, http: Any = None, **kw: Any) -> Any:
+        """A :class:`ntu_easy_llm.router.Router` for a chain or a single profile (``None`` → default).
+
+        A single profile (or a chain without a waterfall) behaves exactly like
+        its first member's adapter. Extra keywords (``on_event``, ``locale``…)
+        go to the router.
+        """
+        from .router import Router
+        return Router.from_profiles(self, name, http=http, **kw)
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {"version": CONFIG_VERSION}

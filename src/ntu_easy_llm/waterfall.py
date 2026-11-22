@@ -7,7 +7,7 @@ mediation list: the primary is used until it cannot serve, then the next one.
 
 **This module only defines the types and the config format.** The routing
 itself (the class that wraps several adapters and looks like one adapter to
-the caller) lives in ``ntu_easy_llm.router`` from a later 0.6 pre-release.
+the caller) lives in :mod:`ntu_easy_llm.router`.
 
 Config (a ``chains`` entry in a profiles file, see :mod:`ntu_easy_llm.profiles`)::
 

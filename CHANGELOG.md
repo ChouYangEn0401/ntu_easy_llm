@@ -64,6 +64,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   0.6 `Message` (`image_url` data URLs / base64 `image` blocks). Messages
   without images are converted exactly as before.
 
+### Added (0.6 pre-release — waterfall routing, LLOP and subscription sources)
+- `ntu_easy_llm.router.Router` (alias `LLM`): several members behind one
+  adapter-shaped object. `off` = first member only, errors unchanged; `auto`
+  switches on the policy's triggers (quota, invalid key, 429 after
+  `retry_429` retries) and reports it in `ChatResult.switched` / `notice` /
+  `events`; `ask` raises `FallbackRequired` and `resume(pending, use=...)`
+  continues. In-memory cooldowns (`status()`, `reset()`); `trust` never
+  switches; `link_changed` is not retried. A `ChatSession` is shared across
+  members, gets a `switched` event and the reply. `ProfileSet.router(name)`.
+- `remote/api_key/llop` adapter (extra `llop`, the LLOP client SDK, imported
+  lazily): `llop_profile` names the SDK profile; `SdkError.kind_hint` maps to
+  `ErrorKind`. LLOP is not on PyPI yet — install its SDK from an LLOP release
+  wheel or a checkout; without the extra nothing changes.
+- `remote/subscription/{claude,github_copilot,chatgpt}` adapters over the
+  shared login-package interface (imported lazily): text only, `tools` raise
+  `tools_unsupported`, `LoginError.kind` maps to `ErrorKind`. The catalog marks
+  them "for your own use only".
+
 ### Unchanged
 - Every 0.4 / 0.5 public name and signature (`ask*`, `ask_many`, `LLMSession`,
   `LLMAdapter` family, `KeyMaterial`, `agent.chat` / `agent.probe`). Importing

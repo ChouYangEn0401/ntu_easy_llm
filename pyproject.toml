@@ -50,6 +50,11 @@ dev = [
 yaml = [
     "PyYAML>=6.0",
 ]
+# remote/api_key/llop source (the LLOP client SDK). LLOP is not on PyPI yet: until it is, install the SDK
+# from an LLOP release wheel or a checkout (`pip install -e <LLOP checkout>[sdk]`); see README.
+llop = [
+    "localllm-outsider-provider[sdk]",
+]
 
 [project.scripts]
 # 搭配 cli 指令使用 顯示版本

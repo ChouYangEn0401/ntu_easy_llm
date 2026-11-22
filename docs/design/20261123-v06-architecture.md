@@ -60,7 +60,8 @@ remote/
 | `ntu_easy_llm.adapters` | `Adapter` Protocol、`Capabilities`、`ModelInfo`、`ProbeResult`、registry、entry point；`FakeAdapter` |
 | `ntu_easy_llm.catalog` | 給 UI 畫「大類 → 認證 → 服務 → 連線欄位 → 細節」的樹 |
 | `ntu_easy_llm.conversation` | 可選的 `ChatSession`、`SessionStore`、`MemorySessionStore`、`JsonlSessionStore` |
-| `ntu_easy_llm.waterfall` | 備援鏈的**型別與 JSON 設定格式**（路由邏輯在之後的 `ntu_easy_llm.router`） |
+| `ntu_easy_llm.waterfall` | 備援鏈的**型別與 JSON 設定格式**（路由邏輯在 `ntu_easy_llm.router`） |
+| `ntu_easy_llm.router` | 備援路由 `Router`：包住多個成員、對外跟單一 adapter 一樣（見 3.9） |
 
 套件頂層另外延遲匯出：`Message`、`ImagePart`、`ErrorKind`、`ConfigError`、`Profile`、`ProfileSet`、`load_profiles`（＝`profiles.load`）、`get_adapter`、`ChatSession`、`WaterfallPolicy`。
 
@@ -410,6 +411,94 @@ def switch_notice(to_id, reason, locale="zh-TW", *, to_label="") -> str   # 「�
 | OpenAI 風格（openai、gemini、openai_compatible、lmstudio、vllm、llamacpp）、Anthropic、Ollama 的 HTTP adapter；各家的 `register_classifier` 規則；命令列 `catalog`／`models`／`probe`／`chat` | `adapters/` | `Adapter`、`Capabilities`、`ModelInfo`、`ProbeResult`、`classify`、`register_adapter` |
 | 備援路由：一個包住多個成員的類別，對外看起來跟單一 adapter 一樣（`chat` 回 `ChatResult`，另有 `resume(pending, use=...)`、`status()`），以及 `ProfileSet` 取得它的方法 | `ntu_easy_llm.router` | `waterfall` 的所有型別、`ProfileSet.resolve()` |
 | LLOP adapter（extra `[llop]`，延遲 import LLOP SDK）與訂閱 adapter（claude、github_copilot、chatgpt；只回文字） | `adapters/` | `Adapter`、factory 的 `check`、`ErrorKind.LINK_CHANGED`／`TRUST` |
+
+### 3.9 備援路由、LLOP adapter、訂閱 adapter（0.6 預發布加入）
+
+**`ntu_easy_llm.router`**
+
+```python
+class Router:                                   # 別名 LLM
+    def __init__(self, members, *, waterfall=None, profiles=None, chain_id="", http=None,
+                 resolve_secret=None, environ=None, on_event=None, locale="zh-TW",
+                 sleep=time.sleep, clock=time.time)
+        # members：adapter、Profile 或 profile id（id 要給 profiles=）；Profile 在第一次用到時才建 adapter
+        # waterfall：WaterfallPolicy、它的 JSON dict 或 None（＝off）
+    @classmethod from_profiles(cls, profiles, name=None, **kw) -> Router
+    profile: Profile                            # 第一個成員的（property）
+    members: tuple[str, ...]                    # property
+    def capabilities(self) / list_models(*, timeout) / probe(*, send, timeout)   # 都是第一個成員的
+    def chat(self, messages | ChatSession, tools=None, *, max_tokens=None, temperature=None, stop=(),
+             timeout=None, on_delta=None, window_tokens=None) -> ChatResult
+    def resume(self, pending, *, use=None, messages=None) -> ChatResult
+    def status(self) -> list[MemberStatus]
+    def reset(self, profile_id=None) -> None    # 清掉冷卻
+    def pending(self) -> list[PendingFallback]  # 還在等決定的 ask
+    def adapter(self, profile_id) -> Adapter
+
+ProfileSet.router(name=None, *, http=None, **kw) -> Router      # chain 或單一 profile
+```
+
+狀態機（每一次 `chat`）：
+
+| 情況 | 行為 |
+|---|---|
+| `off`（沒設定、單一 profile） | 只叫第一個成員；錯誤原樣丟出；不重試、不冷卻 |
+| `rate_limited` | 同一個成員照 `Retry-After` 重試 `retry_429` 次（沒給就 1、2、4… 秒，最多 `max_retry_wait_s`）；`Retry-After` 超過上限就不等、直接算重試用完 |
+| 錯誤的 kind 不在 `triggers` | 丟出原錯誤（事件 `Failed`）。`trust` 永遠在這一類；`link_changed` 也是（不重試） |
+| 在 `triggers`，`auto` | 這個成員冷卻（`Retry-After`，沒有就 `cooldown_s`；金鑰失效一律 `cooldown_s`）；換下一個沒在冷卻、而且做得到這次呼叫的成員（帶 `tools` 時跳過 `tools=False` 的、有圖片時跳過 `vision=False` 的、這台裝不起來的）；事件 `Switched`；結果 `switched=True`、`notice`＝「已改用 X（原因：…）」。沒有下一個 → `WaterfallExhausted` |
+| 在 `triggers`，`ask` | 丟 `FallbackRequired(pending)`（候選、原因、到期時間）；`resume(pending, use="<id>")` 從那個成員繼續；`use=None` 或過期 → 丟原本的錯 |
+| 一開始第一個成員在冷卻 | `auto`：跳過（事件 `Skipped`）、結果標成已換；`ask`：先問，不默默換；沒有別的候選就照樣試第一個 |
+
+- 冷卻只在記憶體；成功一次就清掉那個成員的冷卻。
+- 給 `ChatSession` 時：送 `session.window(window_tokens)`，所有成員看到同一段對話；換成員時 `session.add_event(Switched)`；回覆以 assistant 訊息加進 session（`meta` 有 `profile_id`、`model`、`usage`）。
+- `on_event` 收到每一個事件（它自己丟例外不影響呼叫）；同一批事件也在 `ChatResult.events`。
+- 函式庫沒有任何供應商的預設順序；不做「隱私降級保護」。
+- `import ntu_easy_llm.router` 跟其他 0.6 模組一樣不載入任何 SDK（有測試鎖住）。
+
+設定範例（profile id、網址、模型都是假的；順序由使用者決定）：
+
+```json
+{
+  "version": 1,
+  "default": "chat",
+  "profiles": {
+    "first":  {"source": "remote/api_key/llop", "llop_profile": "default", "model": "any"},
+    "second": {"source": "remote/api_key/openai_compatible", "base_url": "https://llm.example.test/v1",
+               "api_key_env": "EXAMPLE_SECOND_KEY", "model": "example-model"},
+    "third":  {"source": "local/ollama", "base_url": "http://127.0.0.1:11434", "model": "example-model"}
+  },
+  "chains": {
+    "chat": {"members": ["first", "second", "third"],
+             "waterfall": {"mode": "auto", "triggers": ["quota_exhausted", "auth_invalid", "rate_limited"],
+                           "retry_429": 2, "max_retry_wait_s": 30, "cooldown_s": 900}},
+    "careful": {"members": ["first", "third"], "waterfall": {"mode": "ask", "ask_ttl_s": 600}}
+  }
+}
+```
+
+**`adapters/llop.py`（`remote/api_key/llop`，extra `[llop]`）**
+
+- 延遲 import `llmop.sdk`；`import ntu_easy_llm`、目錄、`check()` 都不載入它（`check()` 只用 `find_spec("llmop")`，沒裝回「要先安裝 ntu_easy_llm[llop]」）。
+- `llop_profile`（預設 `default`）＝LLOP SDK 在這台的設定檔名；API key、簽章私鑰、釘選都在 SDK 那邊，EasyLLM 的設定不放。
+- `model` 空或 `any`＝伺服器決定；`transport`（`auto`／`e2e`／`plain`）、`max_tokens`、`temperature`、`timeout`（當成 SDK 的 `deadline`）照傳。
+- `SdkError.kind_hint` → `ErrorKind`：`quota`→QUOTA_EXHAUSTED、`auth`→AUTH_INVALID、`rate`→RATE_LIMITED、`link_changed`→LINK_CHANGED、`offline`→CONNECTION、`timeout`→TIMEOUT、`trust`→TRUST、`bad_request`→BAD_REQUEST、`server`→SERVER_ERROR、`unknown`→UNKNOWN；後三種再用通用規則細分（`queue_full`／`gateway_busy`→OVERLOADED、context 太長、找不到模型、工具被拒）。`retry_after` 照帶。
+- `link_changed` 直接丟出（不重試、不自己找新連結），訊息附 `llmop client set-link --profile <名稱> <新連結>`。
+- `capabilities()`：`tools`／`vision` 是 `None`（看伺服器的模型）、`stop=True`、沒有串流；`list_models()` 用 `Client.models()`；使用者訊息的圖片轉成 `image_url` data URL。
+- 安裝：LLOP 還沒上 PyPI，pyproject 先寫 `localllm-outsider-provider[sdk]`；目前從 LLOP 的 GitHub release wheel 或 `pip install -e <LLOP 資料夾>[sdk]` 安裝。沒裝 extra 的人不受影響。
+
+**`adapters/subscription.py`（`remote/subscription/claude`／`github_copilot`／`chatgpt`）**
+
+| 來源 | 套件（import） | pip 名稱 |
+|---|---|---|
+| `remote/subscription/claude` | `claude_subscription` | `claude-subscription` |
+| `remote/subscription/github_copilot` | `github_copilot_login` | `github_copilot_login` |
+| `remote/subscription/chatgpt` | `chatgpt_login` | `chatgpt_login` |
+
+- 三個登入套件同一組介面（`INTERFACE_VERSION == "1"`）：`ask(訊息清單, model=, timeout=)`、`LoginError.kind`、`CAPABILITIES`；套件在第一次用到時才 import。
+- **只回文字**：帶 `tools` → `TOOLS_UNSUPPORTED`（不默默忽略）；圖片、工具結果訊息、最後一則不是 user → `BAD_REQUEST`；`stop`、`max_tokens`、`temperature`、`effort` 這幾個 CLI 不支援，忽略並在 `warnings` 記一行。
+- `LoginError.kind` → `ErrorKind`：`quota_exhausted`→QUOTA_EXHAUSTED（帶 `retry_after`）、`auth_invalid`→AUTH_INVALID、`timeout`→TIMEOUT、`not_installed`→CONNECTION、`bad_request`／`unsupported`→BAD_REQUEST（提示太長→CONTEXT_TOO_LONG）、其他→UNKNOWN。
+- `check()`：沒裝套件 → 「要先安裝 <pip 名稱> 套件」。有沒有登入要真的呼叫才知道：`probe(send=False)` 只確認找得到官方 CLI，`probe(send=True)` 送一句；沒登入時呼叫會得到 `AUTH_INVALID`。
+- 目錄上這三個來源的說明標「只給本人使用」（用的是這台電腦上個人的訂閱）；函式庫不實作擋人的邏輯，要不要開給別人由上層應用決定。
 
 ## 4. 相容與版本
 
