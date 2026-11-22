@@ -55,7 +55,7 @@ HISTORY = [
 # --------------------------------------------------------------------------- #
 
 def test_version_bumped_and_agent_reachable_lazily():
-    assert L.__version__ == "0.6.0.dev0"
+    assert L.__version__ == "0.6.0a1"
     assert L.agent is agent
     # the old public surface is untouched
     for name in ("ask", "ask_chatgpt", "ask_gemini", "ask_anthropic", "LLMSession", "KeyMaterial"):

@@ -1,7 +1,7 @@
 # ntu_easy_llm 0.6 架構（介面凍結版）
 
 - 日期：2026-11-23
-- 狀態：介面已凍結（`0.6.0.dev0`）；HTTP adapter、waterfall 路由、LLOP 與訂閱 adapter 在後續的 0.6 預發布版補上
+- 狀態：介面已凍結；`0.6.0a1` 起包含 HTTP adapter、waterfall 路由、LLOP 與訂閱 adapter
 - 用途：給要在 ntu_easy_llm 上面寫 adapter、或拿它當 LLM 底層的程式看的說明。這裡列的公開名稱與簽名，之後只會**加**（有預設值的欄位、kw-only 參數），不會改或刪；真的要改，先發提案。
 
 ---
@@ -502,7 +502,7 @@ ProfileSet.router(name=None, *, http=None, **kw) -> Router      # chain 或單�
 
 ## 4. 相容與版本
 
-- 版本 `0.6.0.dev0`（semver minor：只加東西）。
+- 版本 `0.6.0a1`（semver minor 的預發布：只加東西）。
 - 必裝相依不變（openai、google-genai、anthropic 留給舊的 `ask*`）。新增 extra：`yaml`（PyYAML）。
 - 授權維持 MIT；使用、修改請保留 `LICENSE` 裡的版權聲明。
 

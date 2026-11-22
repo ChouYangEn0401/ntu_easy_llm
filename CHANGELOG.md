@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0a1] - 2026-11-23
+
 ### Added (0.6.0.dev0 — interface freeze; see `docs/design/20261123-v06-architecture.md`)
 - `ntu_easy_llm.types`: provider-neutral `Message` and `ImagePart` (repr never
   prints image bytes), `as_message` / `as_messages` (dicts, objects, OpenAI /
