@@ -119,6 +119,19 @@ _BUILTIN: dict[str, str] = {
     "local/fake": "ntu_easy_llm.adapters.fake:from_profile",
 }
 
+# HTTP adapters (standard library only; the classes are their own factories)
+_BUILTIN.update({
+    "local/lmstudio": "ntu_easy_llm.adapters.openai_style:LMStudioAdapter",
+    "local/ollama": "ntu_easy_llm.adapters.ollama:OllamaAdapter",
+    "local/vllm": "ntu_easy_llm.adapters.openai_style:VLLMAdapter",
+    "local/llamacpp": "ntu_easy_llm.adapters.openai_style:LlamaCppAdapter",
+    "local/openai_compatible": "ntu_easy_llm.adapters.openai_style:LocalOpenAICompatibleAdapter",
+    "remote/api_key/openai": "ntu_easy_llm.adapters.openai_style:OpenAIAdapter",
+    "remote/api_key/anthropic": "ntu_easy_llm.adapters.anthropic:AnthropicAdapter",
+    "remote/api_key/gemini": "ntu_easy_llm.adapters.openai_style:GeminiAdapter",
+    "remote/api_key/openai_compatible": "ntu_easy_llm.adapters.openai_style:OpenAICompatibleAdapter",
+})
+
 _LOCK = threading.RLock()
 _REGISTRY: dict[str, AdapterFactory | str] = {}
 _ENTRY_POINTS: dict[str, Any] | None = None   # source -> EntryPoint (not loaded)
