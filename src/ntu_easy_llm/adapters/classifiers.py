@@ -95,6 +95,8 @@ def _local(*, status: int | None, body: str, headers: Mapping[str, str], exc: Ba
     if not status or status < 400:
         return None
     low = body.lower()
+    if tools_sent and "--jinja" in low:              # llama.cpp: "tools param requires --jinja flag" 【推測：狀態碼可能是 500】
+        return ErrorKind.TOOLS_UNSUPPORTED, None
     if status < 500 or "context" in low:
         if _has(low, _LOCAL_CONTEXT) and ("exceed" in low or "greater than" in low or "maximum" in low):
             return ErrorKind.CONTEXT_TOO_LONG, None
