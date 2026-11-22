@@ -484,7 +484,7 @@ ProfileSet.router(name=None, *, http=None, **kw) -> Router      # chain 或單�
 - `SdkError.kind_hint` → `ErrorKind`：`quota`→QUOTA_EXHAUSTED、`auth`→AUTH_INVALID、`rate`→RATE_LIMITED、`link_changed`→LINK_CHANGED、`offline`→CONNECTION、`timeout`→TIMEOUT、`trust`→TRUST、`bad_request`→BAD_REQUEST、`server`→SERVER_ERROR、`unknown`→UNKNOWN；後三種再用通用規則細分（`queue_full`／`gateway_busy`→OVERLOADED、context 太長、找不到模型、工具被拒）。`retry_after` 照帶。
 - `link_changed` 直接丟出（不重試、不自己找新連結），訊息附 `llmop client set-link --profile <名稱> <新連結>`。
 - `capabilities()`：`tools`／`vision` 是 `None`（看伺服器的模型）、`stop=True`、沒有串流；`list_models()` 用 `Client.models()`；使用者訊息的圖片轉成 `image_url` data URL。
-- 安裝：LLOP 還沒上 PyPI，pyproject 先寫 `localllm-outsider-provider[sdk]`；目前從 LLOP 的 GitHub release wheel 或 `pip install -e <LLOP 資料夾>[sdk]` 安裝。沒裝 extra 的人不受影響。
+- 安裝：LLOP 不在 PyPI，`[llop]` 直接指向 LLOP 官方 GitHub release 的 wheel 網址（不寫裸套件名，避免有人在 PyPI 搶註同名套件）；也可以先 `pip install -e <LLOP 資料夾>[sdk]`。沒裝 extra 的人不受影響。
 
 **`adapters/subscription.py`（`remote/subscription/claude`／`github_copilot`／`chatgpt`）**
 
@@ -502,7 +502,7 @@ ProfileSet.router(name=None, *, http=None, **kw) -> Router      # chain 或單�
 
 ## 4. 相容與版本
 
-- 版本 `0.6.0a1`（semver minor 的預發布：只加東西）。
+- 版本 `0.6.0a2`（semver minor 的預發布：只加東西）。
 - 必裝相依不變（openai、google-genai、anthropic 留給舊的 `ask*`）。新增 extra：`yaml`（PyYAML）。
 - 授權維持 MIT；使用、修改請保留 `LICENSE` 裡的版權聲明。
 

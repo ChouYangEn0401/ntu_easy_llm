@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0a2] - 2026-11-23
+
+### Security
+- The `[llop]` extra now pins the LLOP SDK by its GitHub release wheel URL instead of a bare package
+  name, so pip can never pick up a same-named package someone registers on PyPI.
+
 ## [0.6.0a1] - 2026-11-23
 
 ### Added (0.6.0.dev0 — interface freeze; see `docs/design/20261123-v06-architecture.md`)

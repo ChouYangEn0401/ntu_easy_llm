@@ -50,10 +50,11 @@ dev = [
 yaml = [
     "PyYAML>=6.0",
 ]
-# remote/api_key/llop source (the LLOP client SDK). LLOP is not on PyPI yet: until it is, install the SDK
-# from an LLOP release wheel or a checkout (`pip install -e <LLOP checkout>[sdk]`); see README.
+# remote/api_key/llop source (the LLOP client SDK). LLOP is not on PyPI: the official GitHub release wheel by
+# direct URL, never a bare name (someone could register that name on PyPI). A checkout works too:
+# `pip install -e <LLOP checkout>[sdk]` before installing this extra.
 llop = [
-    "localllm-outsider-provider[sdk]",
+    "localllm-outsider-provider[sdk] @ https://github.com/ChouYangEn0401/LocalLLMOutsiderProvider/releases/download/v0.3.0a3/localllm_outsider_provider-0.3.0a3-py3-none-any.whl",
 ]
 
 [project.scripts]
