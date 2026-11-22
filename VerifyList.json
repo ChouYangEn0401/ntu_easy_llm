@@ -21,6 +21,27 @@
       "run": ["python", "-c", "from ntu_easy_llm import ask, LLMSession; from ntu_easy_llm.agent import chat, probe, Tool"],
       "cwd": ".", "env": {}, "expect": "exit 0", "needs": [], "since": "2026-11-23",
       "status": "pass", "last_run": "2026-11-23", "last_result": "exit 0"
+    },
+    {
+      "id": "v06-http-adapters",
+      "what": "HTTP adapters, provider error rules, transport and CLI tests (scripted transport + servers bound to 127.0.0.1; other addresses blocked)",
+      "run": ["python", "-m", "pytest", "-q", "tests/test_adapters_openai_style.py", "tests/test_adapters_anthropic.py", "tests/test_adapters_ollama.py", "tests/test_adapters_transport_cli.py", "tests/test_classify.py"],
+      "cwd": ".", "env": {}, "expect": "exit 0", "needs": ["port"], "since": "2026-11-23",
+      "status": "pass", "last_run": "2026-11-23", "last_result": "139 passed"
+    },
+    {
+      "id": "v06-adapters-import-no-sdk",
+      "what": "Importing the adapters package loads no provider SDK and not the LLOP SDK",
+      "run": ["python", "-c", "import sys, ntu_easy_llm, ntu_easy_llm.adapters; assert not {'openai','anthropic','google.genai','llmop'} & set(sys.modules)"],
+      "cwd": ".", "env": {}, "expect": "exit 0", "needs": [], "since": "2026-11-23",
+      "status": "pass", "last_run": "2026-11-23", "last_result": "exit 0"
+    },
+    {
+      "id": "v06-cli-catalog-offline",
+      "what": "ntu_easy_llm catalog works with no network",
+      "run": ["python", "-m", "ntu_easy_llm.cli", "catalog"],
+      "cwd": ".", "env": {}, "expect": "exit 0", "needs": [], "since": "2026-11-23",
+      "status": "pass", "last_run": "2026-11-23", "last_result": "exit 0"
     }
   ]
 }

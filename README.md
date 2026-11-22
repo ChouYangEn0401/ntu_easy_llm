@@ -57,6 +57,60 @@ history = [..., {"role": "assistant", "content": "", "tool_calls": reply.tool_ca
 
 ---
 
+## 0.6 預發布：設定檔＋各家 adapter＋命令列
+
+> 0.6.0 開發中（介面見 `docs/design/20261123-v06-architecture.md`）。上面的 `agent.chat` 與舊 API 都照舊。
+
+一份設定檔列出「怎麼連到哪個模型」（profile），金鑰**只寫在哪裡**（環境變數名稱或 `secret: "<scheme>:<名稱>"`），不寫金鑰本身：
+
+```json
+{
+  "version": 1,
+  "default": "home",
+  "profiles": {
+    "home":    {"source": "local/lmstudio", "model": "example-model", "options": {"tools": true}},
+    "ollama":  {"source": "local/ollama", "model": "example-model", "options": {"context_size": 8192}},
+    "api":     {"source": "remote/api_key/openai", "api_key_env": "EXAMPLE_OPENAI_KEY", "model": "example-model"},
+    "gateway": {"source": "remote/api_key/openai_compatible", "base_url": "https://gateway.example.com/v1",
+                "api_key_env": "EXAMPLE_GATEWAY_KEY", "model": "example-model"}
+  }
+}
+```
+
+```python
+from ntu_easy_llm import load_profiles
+
+ps = load_profiles("profiles.json")          # .yaml 要裝 ntu_easy_llm[yaml]
+llm = ps.adapter("home")                     # 每個來源都有同樣的四個方法
+
+llm.probe()                                  # 只讀：列模型、確認連得到，不載入模型、不花 token
+llm.probe(send=True)                         # 真的送一句
+llm.list_models()                            # [ModelInfo(id=..., loaded=True, context=32768, ...)]
+reply = llm.chat([{"role": "user", "content": "你好"}], max_tokens=200, stop=["\n\n"],
+                 on_delta=lambda piece: print(piece, end=""))     # 給 on_delta 就邊收邊印
+reply.text, reply.finish, reply.usage        # finish："stop"｜"length"｜"thinking"｜"tool_calls"
+```
+
+- 來源：`local/{lmstudio, ollama, vllm, llamacpp, openai_compatible}`、`remote/api_key/{openai, anthropic, gemini, openai_compatible}`。
+  `ntu_easy_llm catalog` 列出全部，與這台能不能用。
+- 失敗一律是 `LLMError`，帶 `kind`（`quota_exhausted`、`auth_invalid`、`rate_limited`、`context_too_long`、`model_not_found`、`tools_unsupported`…）、
+  `retry_after`（伺服器要你等幾秒）、`profile_id`。各家的差異與限制見架構文件第 5 節。
+- 本機與區網的網址不走系統 proxy（VPN／proxy 軟體不會把它吃掉）；遠端照系統設定。`options.proxy` 可以改成 `none`／`system`。
+- 只用標準函式庫打 HTTP，不載入任何供應商 SDK。
+
+命令列：
+
+```
+ntu_easy_llm catalog [--locale en] [--json]
+ntu_easy_llm models --config profiles.json --profile home
+ntu_easy_llm probe  --config profiles.json --profile api [--send]
+ntu_easy_llm chat   --config profiles.json --profile home "用一句話介紹你自己" [--stream]
+```
+
+結束碼：0＝成功、1＝供應商或網路失敗（或 probe 不通）、2＝設定有問題。`chat` 目前只跑單一 profile。
+
+---
+
 ## 版本需求
 
 ```
