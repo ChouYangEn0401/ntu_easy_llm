@@ -40,6 +40,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   itself comes in a later 0.6 pre-release.
 - Extra `yaml` (PyYAML); `dev` now includes PyYAML for the tests.
 
+### Added (HTTP adapters; see section 5 of the architecture doc)
+- Adapters for `local/lmstudio`, `local/ollama` (native `/api/chat` with
+  `num_ctx`, falls back to `/v1`), `local/vllm`, `local/llamacpp`,
+  `local/openai_compatible`, `remote/api_key/openai`, `remote/api_key/anthropic`,
+  `remote/api_key/gemini` (OpenAI-compatible endpoint) and
+  `remote/api_key/openai_compatible`. Standard library only; the catalog now
+  shows them as available. `stop`, images (`ImagePart`), `max_tokens`,
+  `temperature`, `timeout` and streaming through `on_delta` (SSE / NDJSON).
+- `list_models()` (LM Studio and Ollama say which models are loaded) and
+  `probe(send=False)` only read; `probe(send=True)` sends one short message.
+- Addresses on this machine or the LAN bypass proxies; remote ones use the
+  system settings (`options.proxy` overrides).
+- Per-provider error rules (`ntu_easy_llm.adapters.classifiers`) for OpenAI,
+  Anthropic, Gemini and the local servers, loaded on first `classify`; a
+  caller's own `register_classifier` for the same name wins. Wording that is
+  not yet verified against the live services is marked in the code and docs.
+- Command line: `ntu_easy_llm catalog`, `models`, `probe [--send]` and
+  `chat [--stream]` (`--config FILE --profile P`); `--version` unchanged.
+
+### Changed
+- `agent.to_openai_messages` / `to_anthropic_messages` send the images of a
+  0.6 `Message` (`image_url` data URLs / base64 `image` blocks). Messages
+  without images are converted exactly as before.
+
 ### Unchanged
 - Every 0.4 / 0.5 public name and signature (`ask*`, `ask_many`, `LLMSession`,
   `LLMAdapter` family, `KeyMaterial`, `agent.chat` / `agent.probe`). Importing

@@ -144,14 +144,44 @@ _MODEL_MARKERS = ("model_not_found", "no such model", "model not found")
 _TOOL_MARKERS = ("tool", "function")
 
 
+_BUILTIN_LOADED = False
+
+
+def _ensure_builtin_classifiers() -> None:
+    """Register the built-in provider rules (``ntu_easy_llm.adapters.classifiers``) once.
+
+    Done lazily (this module must not import the adapters at import time) and
+    before any caller registration takes effect, so a caller's own
+    :func:`register_classifier` for the same provider always wins.
+    """
+    global _BUILTIN_LOADED
+    if _BUILTIN_LOADED:
+        return
+    with _LOCK:
+        if _BUILTIN_LOADED:
+            return
+        _BUILTIN_LOADED = True
+    try:
+        from .adapters.classifiers import BUILTIN_CLASSIFIERS
+    except Exception:  # noqa: BLE001 — the generic rules still work without them
+        return
+    with _LOCK:
+        for name, fn in BUILTIN_CLASSIFIERS.items():
+            _CLASSIFIERS.setdefault(name, fn)
+
+
 def register_classifier(provider: str, fn: Classifier | None) -> None:
     """Add provider-specific rules (``fn=None`` removes them).
 
     ``fn(*, status, body, headers, exc, tools_sent)`` returns
     ``(ErrorKind, retry_after_or_None)`` or ``None`` to fall through to the
     generic rules. ``provider`` is matched case-insensitively against the
-    ``provider`` argument of :func:`classify`.
+    ``provider`` argument of :func:`classify`. Built-in rules exist for
+    ``openai``, ``anthropic``, ``gemini``, ``openai_compatible``, ``lmstudio``,
+    ``ollama``, ``vllm`` and ``llamacpp``; registering one of those names
+    replaces the built-in rule.
     """
+    _ensure_builtin_classifiers()
     key = str(provider or "").strip().lower()
     with _LOCK:
         if fn is None:
@@ -236,6 +266,7 @@ def classify(provider: str = "", *, status: int | None = None, body: str = "",
             body = body or str(getattr(exc, "body", "") or "")
             headers = headers or getattr(exc, "headers", None)
             retry = retry if retry is not None else parse_retry_after(headers)
+    _ensure_builtin_classifiers()
     fn = _CLASSIFIERS.get(str(provider or "").strip().lower())
     if fn is not None:
         got = fn(status=status, body=body or "", headers=headers or {}, exc=exc, tools_sent=tools_sent)

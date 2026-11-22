@@ -106,7 +106,7 @@ def test_get_adapter_for_fake_profile_from_config():
 
 
 def test_unknown_source_and_register_unregister():
-    p = Profile("o", "remote/api_key/openai", secret="env:EXAMPLE_KEY")
+    p = Profile("o", "remote/api_key/example", secret="env:EXAMPLE_KEY")
     with pytest.raises(AdapterNotFound):
         get_adapter(p)
     seen = {}
@@ -114,16 +114,28 @@ def test_unknown_source_and_register_unregister():
     def factory(profile, *, http=None, resolve_secret):
         seen["secret"] = resolve_secret(profile.secret)
         return FakeAdapter(["from-custom"], profile=profile)
-    register_adapter("remote/api_key/openai", factory)
+    register_adapter("remote/api_key/example", factory)
     try:
         with pytest.raises(ValueError):
-            register_adapter("remote/api_key/openai", factory)
+            register_adapter("remote/api_key/example", factory)
         a = get_adapter(p, environ={"EXAMPLE_KEY": "value"})
         assert a.chat(USER).text == "from-custom" and seen["secret"] == "value"
-        assert adapter_status("remote/api_key/openai") == (True, "")
+        assert adapter_status("remote/api_key/example") == (True, "")
+    finally:
+        unregister_adapter("remote/api_key/example")
+    assert adapter_status("remote/api_key/example")[0] is False
+
+
+def test_register_adapter_overrides_a_builtin_and_unregister_restores_it():
+    def factory(profile, *, http=None, resolve_secret):
+        return FakeAdapter(["custom"], profile=profile)
+    p = Profile("o", "remote/api_key/openai", secret="env:EXAMPLE_KEY")
+    register_adapter("remote/api_key/openai", factory)       # built-ins need no replace=True
+    try:
+        assert get_adapter(p).chat(USER).text == "custom"
     finally:
         unregister_adapter("remote/api_key/openai")
-    assert adapter_status("remote/api_key/openai")[0] is False
+    assert type(get_adapter(p)).__name__ == "OpenAIAdapter"
 
 
 def test_factory_check_blocks_use():
@@ -173,8 +185,11 @@ def test_catalog_availability_and_llop_extra(monkeypatch):
     if importlib.util.find_spec("llmop") is None:
         assert "ntu_easy_llm[llop]" in llop.unavailable_reason
         assert list_llop_profiles() == []
-    assert not find("remote/api_key/openai").available       # no HTTP adapters in this pre-release
-    assert find("remote/api_key/openai", locale="en").unavailable_reason == "no adapter for this source in this version"
+    for path in ("local/ollama", "local/lmstudio", "local/vllm", "local/llamacpp", "local/openai_compatible",
+                 "remote/api_key/openai", "remote/api_key/anthropic", "remote/api_key/gemini",
+                 "remote/api_key/openai_compatible"):
+        assert find(path).available, path                    # the HTTP adapters (stdlib only)
+    assert adapter_status("remote/api_key/example") == (False, "no adapter for this source in this version")
     assert catalog(locale="en").find("local").label.startswith("Local")
     assert find("nope") is None
 

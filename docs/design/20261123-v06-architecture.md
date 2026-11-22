@@ -284,7 +284,7 @@ def list_llop_profiles() -> list[str]              # 沒裝 [llop] → []
 
 - `fields` 是連線那一步要問的（`base_url`、`model`、`secret`、`llop_profile`），`detail_fields` 是細節（放進 `options`：`max_tokens`、`temperature`、`timeout`、本地的 `context_size`／`tools`、訂閱的 `effort`、LLOP 的 `transport`）。
 - `secret` 類欄位：UI 收下金鑰後由**呼叫端**存進保管箱或環境變數，profile 只寫引用。
-- `available`：有 adapter、而且它的 `check` 說這台能用才是 True；不能用時 `unavailable_reason` 寫原因（例如「要先安裝 ntu_easy_llm[llop]」「這個版本還沒有這個來源的 adapter」）。這個預發布版只有 `local/fake` 有 adapter，所以目錄上的來源目前都顯示不可用，等 HTTP、LLOP、訂閱 adapter 加進來就會自動變成可用。
+- `available`：有 adapter、而且它的 `check` 說這台能用才是 True；不能用時 `unavailable_reason` 寫原因（例如「要先安裝 ntu_easy_llm[llop]」「這個版本還沒有這個來源的 adapter」）。HTTP adapter（`local/*` 全部、`remote/api_key/{openai, anthropic, gemini, openai_compatible}`）只用標準函式庫，一律可用（見第 5 節）；LLOP、訂閱 adapter 加進來後也會自動變成可用。
 
 ### 3.6 conversation（可選）
 
@@ -416,3 +416,71 @@ def switch_notice(to_id, reason, locale="zh-TW", *, to_label="") -> str   # 「�
 - 版本 `0.6.0.dev0`（semver minor：只加東西）。
 - 必裝相依不變（openai、google-genai、anthropic 留給舊的 `ask*`）。新增 extra：`yaml`（PyYAML）。
 - 授權維持 MIT；使用、修改請保留 `LICENSE` 裡的版權聲明。
+
+## 5. 各 adapter 的差異與限制（HTTP adapter）
+
+> 標【推測】的是照公開文件或社群回報寫的，還沒有對真的服務實測；實測不一樣時改 `adapters/classifiers.py` 或對應的 adapter，並更新這裡。
+
+### 5.1 共同行為
+
+| 項目 | 行為 |
+|---|---|
+| 模組 | `adapters/openai_style.py`（openai、gemini、openai_compatible、lmstudio、vllm、llamacpp）、`adapters/anthropic.py`、`adapters/ollama.py`；共用 `adapters/_http.py`。類別本身就是 factory，登記在 `base._BUILTIN`（第一次用到才 import） |
+| HTTP | 標準函式庫 `urllib`；不載入任何供應商 SDK。`http=` 可以注入任何有 `request(method, url, json=, headers=, timeout=, stream=)` 的物件（`requests.Session` 直接可用），或 0.5 那種只有 `post()` 的假 session |
+| 訊息轉換 | 共用 `agent.to_openai_messages`／`agent.to_anthropic_messages`（0.6 起會帶 `ImagePart`：OpenAI 風格是 `image_url` data URL，Anthropic 是 base64 `image` 區塊）；回覆解析也共用 `agent` 的同一份 |
+| proxy | 本機與區網（loopback、私有網段、link-local、100.64/10、`localhost`、`*.local`／`*.lan`／`*.internal`／`*.home.arpa`、沒有點的主機名）與所有 `local/*` 來源**直連**（`ProxyHandler({})`）；遠端照系統設定。`options.proxy`：`auto`（預設）／`none`／`system` |
+| 逾時 | 呼叫的 `timeout` → `options.timeout` → 預設（遠端 90 秒、本機 300 秒）。urllib 的逾時是「每一次讀寫」：串流時只要還在吐字就不會被砍 |
+| 金鑰 | 每次送出前才用 `resolve_secret` 取；不存在物件上、不進錯誤訊息。環境變數沒設＝`LLMError(kind=AUTH_INVALID)`，訊息只寫變數名稱 |
+| 參數 | `max_tokens`、`temperature`：呼叫的參數優先，其次 `options`。`options.extra_body`（物件）原樣併進每一個請求內文（給各家特有的欄位）。`options.tools`／`options.vision` 設 `false` 會在送出前就擋（`TOOLS_UNSUPPORTED`／`BAD_REQUEST`），設 `true` 是保證有 |
+| 串流 | 給 `on_delta` 才串流（OpenAI 風格與 Anthropic 是 SSE、Ollama 原生是 NDJSON）。伺服器不理 `stream` 直接回整包 JSON 時照樣能用（`on_delta` 收到整段一次）。串流中途的錯誤事件照一般錯誤分類 |
+| 錯誤 | 非 2xx → `LLMHTTPError`（`kind` 用 `classify(<provider>, tools_sent=…)` 判、`retry_after` 讀 `Retry-After`／`retry-after-ms`）；連不上 → `LLMConnectionError`（`CONNECTION` 或 `TIMEOUT`）；200 但格式不對 → `LLMResponseError`；訊息或工具格式不對 → `LLMError(BAD_REQUEST)`。全部帶 `profile_id`。adapter **不重試**，429 重試交給之後的 router |
+| `probe(send=False)` | 只送 GET（列模型），不載入模型、不花 token。列模型的端點回 404＝通了但不能列（`ok=True`、`reason` 說明）。設定的模型不在清單裡：具名的來源回 `MODEL_NOT_FOUND`；`openai_compatible`（本機與遠端）只在 `reason` 註明、仍算通（閘道常用別名） |
+| `probe(send=True)` | 先列模型，再送一句「Reply with one word: ok」（`max_tokens=256`，推理模型要先想）；空回覆＝`BAD_RESPONSE`（用光 token 在想時 reason 會說） |
+| `finish` | 用 `normalize_finish` 填；`length` 但一個字都沒寫＝`thinking` |
+
+### 5.2 能力表
+
+`None`＝看模型／伺服器，照送、讓伺服器決定。
+
+| 來源 | 端點 | tools | vision | stop | stream | usage | 列模型 | `loaded` |
+|---|---|---|---|---|---|---|---|---|
+| `remote/api_key/openai` | `/v1/chat/completions` | True | None | True | True | True | `/v1/models` | — |
+| `remote/api_key/anthropic` | `/v1/messages` | True | None | True | True | True | `/v1/models` | — |
+| `remote/api_key/gemini` | OpenAI 相容端點 `/chat/completions` | True | None | True | True | True | `/models`（去掉 `models/` 前綴） | — |
+| `remote/api_key/openai_compatible` | `<base_url>/chat/completions` | None | None | True | True | False | `/models` | — |
+| `local/lmstudio` | `/v1/chat/completions` | None | None | True | True | True | `/api/v1/models` → `/api/v0/models` → `/v1/models` | 有（前兩個） |
+| `local/ollama` | 原生 `/api/chat`（或 `/v1`） | None | None | True | True | True | `/api/tags`＋`/api/ps` | 有 |
+| `local/vllm` | `/v1/chat/completions` | None | None | True | True | True | `/v1/models`（`max_model_len`→context） | 全部 True |
+| `local/llamacpp` | `/v1/chat/completions` | None | None | True | True | True | `/v1/models` | 全部 True |
+| `local/openai_compatible` | `<base_url>/chat/completions` | None | None | True | True | False | `/models` | — |
+
+本機來源的 tools／vision 可用 `options.tools`／`options.vision` 改成 True／False。
+
+### 5.3 各家的差異
+
+- **openai**：長度上限送 `max_completion_tokens`（新模型不收 `max_tokens`）；串流加 `stream_options.include_usage` 拿用量。推理模型可能不收 `stop`、`temperature`，會回 400 → `BAD_REQUEST`【推測】：這類模型不要設這兩個。不支援 Responses API。
+- **anthropic**：`system` 拆到最上層；連續的工具結果併成一則 user；`stop`→`stop_sequences`；`max_tokens` 必填，沒給時送 4096。extended thinking、prompt caching 等請用 `options.extra_body` 自己帶。
+- **gemini**：走 Google 的 OpenAI 相容端點，同一把 Gemini API key；錯誤內文是 Google 的格式（可能包在一個元素的陣列裡）。列模型的 id 有 `models/` 前綴【推測】，這裡會去掉。不支援原生 API 才有的功能。串流不送 `stream_options`【推測：相容端點是否支援未實測】。
+- **openai_compatible（遠端）**：`base_url` 必填，金鑰可以不給（有些閘道不用）。
+- **lmstudio**：聊天走 `/v1`。`context_size` 是載入模型時決定的，聊天請求改不了（不送）。列模型先試 LM Studio 自己的 REST API（`/api/v1/models`，再 `/api/v0/models`）才知道哪些已載入、context、vision、tool use；舊版沒有這些端點時退回 `/v1/models`（沒有 `loaded`）【推測：欄位名照公開文件】。沒開 JIT 載入時，對沒載入的模型聊天會失敗（`MODEL_NOT_FOUND`【推測：錯誤字串未實測】）。不做載入、卸載。
+- **ollama**：預設原生 `/api/chat`：`context_size`→`num_ctx`、`max_tokens`→`num_predict`、`stop`、`temperature` 放在 `options`；`options.think`（true／false）有設才送（舊版或不會思考的模型可能不收）。圖片是 base64 字串陣列、工具參數是物件、工具結果帶 `tool_name`；回覆沒有 tool call id，給 `call_<n>`。`base_url` 結尾是 `/v1` 或 `options.api: "openai"` 時改走 `/v1`；原生端點回 404 且內文沒提到 model（前面有只開 `/v1` 的代理）時自動改走 `/v1` 一次。
+- **vllm**：工具呼叫要伺服器開 `--enable-auto-tool-choice` 與 `--tool-call-parser`，沒開時回 400 → `TOOLS_UNSUPPORTED`。串流送 `stream_options.include_usage`。
+- **llamacpp**：工具呼叫要伺服器開 `--jinja`，沒開時的錯誤 → `TOOLS_UNSUPPORTED`（狀態碼可能是 500【推測】）。
+- **openai_compatible（本機）**：`base_url` 必填；其他同 OpenAI 風格。
+
+### 5.4 各家的錯誤分類（`adapters/classifiers.py`，先跑、回 `None` 才走第 3.2 節的通用規則）
+
+| provider（`classify` 的第一個參數） | 規則 |
+|---|---|
+| `openai` | `insufficient_quota`（code 或 type）→ QUOTA；其他 429 → RATE；401 或 `invalid_api_key` → AUTH；403 → PERMISSION；`model_not_found` → MODEL；`context_length_exceeded` → CONTEXT；`invalid_function_parameters`／「Invalid schema for function」→ BAD_REQUEST（工具格式寫錯是呼叫端的錯，不是不支援工具）【推測】 |
+| `anthropic` | 529 → OVERLOADED；內文「credit balance」→ QUOTA【推測：確切字串待實測】；`error.type`：`authentication_error`→AUTH、`permission_error`→PERMISSION、`rate_limit_error`→RATE、`overloaded_error`→OVERLOADED、`request_too_large`→CONTEXT、`not_found_error`（提到 model）→MODEL、`api_error`→SERVER_ERROR、`billing_error`→QUOTA【推測】、`timeout_error`→TIMEOUT【推測】；「prompt is too long」→ CONTEXT |
+| `gemini` | `API_KEY_INVALID`／「API key not valid」／「API key expired」／401 → AUTH；429 或 `RESOURCE_EXHAUSTED`：內文有每日配額（`PerDay`、per day）或 billing → QUOTA，否則 → RATE；等待秒數取 `retryDelay`（`"37s"`）【推測：每次 429 都寫「exceeded your current quota」，要靠 quotaId 分】；403／`PERMISSION_DENIED`、「location is not supported」【推測】→ PERMISSION；404 提到 model → MODEL；「input token count … exceeds」→ CONTEXT【推測】 |
+| `lmstudio`、`ollama`、`vllm`、`llamacpp`、`openai_compatible` | context 超過：「Context size has been exceeded」（LM Studio）、「greater than the context length」（LM Studio【推測】）、「exceeds the available context size」／`exceed_context_size_error`（llama.cpp【推測】）、「maximum context length」（vLLM）、「input length exceeds the context length」（Ollama【推測】）→ CONTEXT（5xx 也算）；模型不存在：「try pulling it first」（Ollama）、「No models loaded」（LM Studio【推測】）、「invalid model identifier」（LM Studio【推測】）、「does not exist」／`model_not_found` 且提到 model → MODEL；帶 tools 且內文有 `--jinja` → TOOLS_UNSUPPORTED。其他照通用規則（帶 tools 時 400／422 提到 tool／function → TOOLS_UNSUPPORTED） |
+
+這些規則在第一次呼叫 `classify` 或 `register_classifier` 時才載入；呼叫端自己 `register_classifier("openai", ...)` 會蓋過內建的。0.5 的 `agent.chat` 丟的 `LLMHTTPError` 也用同一套。
+
+### 5.5 不做的事
+
+- 不載入、不卸載本機模型（LM Studio、Ollama 都一樣）；`probe(send=False)` 也不會觸發載入。
+- 不重試、不換來源（交給 router）；不做 LLOP 與訂閱來源（另外的 adapter）。
+- 不碰供應商 SDK；不讀 `.env` 或任何設定檔以外的地方拿金鑰。
