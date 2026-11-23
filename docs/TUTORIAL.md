@@ -136,6 +136,8 @@
 
 好幾個用逗號隔開，例如 `[llop,subscriptions]`。
 
+> `[llop]` 裝到的 LLOP SDK 是 **0.3.0a3**，可以連 0.3.0a4 的 LLOP 伺服器：0.3.0a4 只改了伺服器的啟動畫面（不再印完整的 API 連結），SDK 沒有變（見 LLOP 的 CHANGELOG）。
+
 1. **做什麼**：安裝套件。下面這行是「LLOP＋三種訂閱」的寫法，照上表改 `[...]` 裡的字。
 2. **打什麼**：
 
@@ -169,48 +171,113 @@
    ntu_easy_llm catalog
    ```
 
-3. **會看到什麼**：一棵樹。每一行是一個來源，後面寫 `[可用]` 或 `[不可用: 原因]`，最後是能不能用工具。例如：
+3. **會看到什麼**：一棵樹。每一行是一個來源，後面寫 `[可用]` 或 `[不可用: 原因]`，最後是能不能用工具。下面只節錄幾行（實際會列出全部來源）：
 
    ```
    local  本地（這台或區網的伺服器）
-     local/ollama  Ollama  [可用]  [工具：看伺服器與模型]
      local/lmstudio  LM Studio  [可用]  [工具：看伺服器與模型]
-     ...
    remote  遠端服務
      remote/api_key  API 金鑰
        remote/api_key/openai  OpenAI  [可用]  [工具 ✓]
-       ...
        remote/api_key/llop  LLOP（本地模型發布服務）  [可用]  [工具：看伺服器與模型]
      remote/subscription  訂閱登入（這台已登入的官方 CLI）
        remote/subscription/claude  Claude（訂閱）  [可用]  [工具 ✗ 只能聊天]
-       remote/subscription/github_copilot  GitHub Copilot（訂閱）  [不可用: 要先安裝 ntu_easy_llm[copilot]（github_copilot_login 套件）/ install ntu_easy_llm[copilot] (the github_copilot_login package) first]  [工具 ✗ 只能聊天]
-       ...
    ```
 
    每一行最前面那串（例如 `local/lmstudio`）就是等一下設定檔裡 `source` 要填的字。
-4. **不是這樣怎麼辦**：你要用的來源寫 `[不可用: 要先安裝 ntu_easy_llm[...]]`：照括號裡的名字回到步驟 4，把它加進 `[...]` 重裝一次。
-   想看英文：`ntu_easy_llm catalog --locale en`。
+4. **不是這樣怎麼辦**：你要用的來源寫 `[不可用: 要先安裝 ntu_easy_llm[...]…]`，例如：
+
+   ```
+   remote/api_key/llop  LLOP（本地模型發布服務）  [不可用: 要先安裝 ntu_easy_llm[llop]]  [工具：看伺服器與模型]
+   ```
+
+   照方括號裡的名字回到步驟 4，把它加進 `[...]` 重裝一次。想看英文：`ntu_easy_llm catalog --locale en`。
 
 ### 步驟 6：寫設定檔
 
-設定檔是一個叫 `profiles.json` 的文字檔。**設定檔裡永遠不寫金鑰本身**，只寫「金鑰放在哪個環境變數」。
-就算你不小心把金鑰寫進去，程式也會拒絕讀取。
+設定檔是一個叫 `profiles.json` 的文字檔，裡面每一組設定叫一個 **profile**，有自己的名字（下面用 `lmstudio`、`openai`、`friend`、`claude_sub`）。
+**設定檔裡永遠不寫金鑰本身**，只寫「金鑰放在哪個環境變數」。就算你不小心把金鑰寫進去，程式也會拒絕讀取。
 
-1. **做什麼**：用記事本建立設定檔。
+1. **做什麼**：用記事本建立設定檔。下面有五份範本，**挑一份最符合你的，整份複製**，不用刪任何東西。
 2. **打什麼**：
 
    ```powershell
    notepad profiles.json
    ```
 
-   記事本問「要建立新檔案嗎？」按「是」。貼上下面的內容，**刪掉你沒有的來源**（整段 `"名字": {…}` 連同前面的逗號一起刪），按 Ctrl+S 存檔，關掉記事本。
+   記事本問「要建立新檔案嗎？」按「是」。把你挑的那一份**整份**貼上，照表格改掉要改的地方，按 Ctrl+S 存檔，關掉記事本。
+
+   **範本一：只有 LM Studio**
 
    ```json
    {
      "version": 1,
-     "default": "home",
+     "default": "lmstudio",
      "profiles": {
-       "home": {
+       "lmstudio": {
+         "source": "local/lmstudio",
+         "base_url": "http://127.0.0.1:1234/v1",
+         "model": "example-model"
+       }
+     }
+   }
+   ```
+
+   **範本二：只有 API 金鑰（OpenAI）**
+
+   ```json
+   {
+     "version": 1,
+     "default": "openai",
+     "profiles": {
+       "openai": {
+         "source": "remote/api_key/openai",
+         "api_key_env": "MY_OPENAI_KEY",
+         "model": "gpt-4.1-mini"
+       }
+     }
+   }
+   ```
+
+   **範本三：只有 LLOP**
+
+   ```json
+   {
+     "version": 1,
+     "default": "friend",
+     "profiles": {
+       "friend": {
+         "source": "remote/api_key/llop",
+         "llop_profile": "tiny",
+         "model": "any"
+       }
+     }
+   }
+   ```
+
+   **範本四：只有訂閱（Claude）**
+
+   ```json
+   {
+     "version": 1,
+     "default": "claude_sub",
+     "profiles": {
+       "claude_sub": {
+         "source": "remote/subscription/claude",
+         "model": "haiku"
+       }
+     }
+   }
+   ```
+
+   **範本五：全部都有**
+
+   ```json
+   {
+     "version": 1,
+     "default": "lmstudio",
+     "profiles": {
+       "lmstudio": {
          "source": "local/lmstudio",
          "base_url": "http://127.0.0.1:1234/v1",
          "model": "example-model"
@@ -222,7 +289,7 @@
        },
        "friend": {
          "source": "remote/api_key/llop",
-         "llop_profile": "home",
+         "llop_profile": "tiny",
          "model": "any"
        },
        "claude_sub": {
@@ -233,19 +300,25 @@
    }
    ```
 
-   每一組的意思：
+   要改的地方：
 
-   | 名字 | 來源 | 你要改的地方 |
+   | profile | 來源 | 你要改的地方 |
    |---|---|---|
-   | `home` | 本地 LM Studio | `1234` 換成 LM Studio 畫面上顯示的埠號；`example-model` 等一下（步驟 7）換成真的模型名稱 |
+   | `lmstudio` | 本地 LM Studio | `1234` 換成 LM Studio 畫面上顯示的埠號；`example-model` 等一下（步驟 7）換成真的模型名稱 |
    | `openai` | OpenAI 的 API 金鑰 | 金鑰放在環境變數 `MY_OPENAI_KEY`（步驟 8）；`model` 換成你要的模型 |
-   | `friend` | LLOP | `home` 是你用 `llmop client add-plain` 或 `llmop client enroll` 建的 LLOP 設定檔名稱（見 LLOP 的教學）；`any`＝讓對方伺服器決定模型 |
-   | `claude_sub` | Claude 訂閱 | `haiku` 可以換 `sonnet`、`opus`；GitHub Copilot 用 `"source": "remote/subscription/github_copilot"`、ChatGPT 用 `"source": "remote/subscription/chatgpt"`，不寫 `model` 就是那個工具的預設 |
+   | `friend` | LLOP | `llop_profile` 填**你在 LLOP 那邊建的設定檔名稱**（見下面說明）；`any`＝讓對方伺服器決定模型 |
+   | `claude_sub` | Claude 訂閱 | `haiku` 可以換 `sonnet`、`opus`。GitHub Copilot 把 `source` 換成 `remote/subscription/github_copilot`、ChatGPT 換成 `remote/subscription/chatgpt`，並把 `"model": "haiku"` 那行刪掉（用那個工具的預設模型） |
 
-   `"default": "home"` 是「沒指定時用哪一組」，要改成你留下來的其中一組名字。
+   **`llop_profile` 填什麼**：照 LLOP 的教學，B 段會在你電腦上建一個 LLOP 自己的設定檔：
+   - 用 API 連結＋key 建的**明文**設定檔（`llmop client add-plain`），教學裡叫 `tiny`；
+   - 用帳號建的**加密**設定檔（`llmop client enroll`），教學裡叫 `home`。
+
+   範本裡寫的是 `tiny`；你用加密的話改成 `home`。這是 LLOP 設定檔的名字，跟 `profiles.json` 裡的 profile 名字（`friend`）是兩回事。
+
+   `"default"` 是「沒指定時用哪一組」，要寫成這份檔案裡有的其中一個 profile 名字。
 3. **會看到什麼**：資料夾裡多了 `profiles.json`。打 `dir` 可以看到它。
 4. **不是這樣怎麼辦**：後面的指令如果出現 `config error: config is not valid JSON: …`（例如 `Expecting property name enclosed in double quotes`），
-   是逗號、括號或引號打錯。最常見的是**最後一組後面多了一個逗號**，把它刪掉。
+   是貼的時候少貼或多貼了字。重新 `notepad profiles.json`，全部刪掉，再整份貼一次範本。
 
 ### 步驟 7：（本地 LM Studio）找出模型名稱、確認連得上
 
@@ -253,7 +326,7 @@
 2. **打什麼**：
 
    ```powershell
-   ntu_easy_llm models --config profiles.json --profile home
+   ntu_easy_llm models --config profiles.json --profile lmstudio
    ```
 
 3. **會看到什麼**：每行一個模型名稱，已載入的後面有 `[loaded]`，例如：
@@ -262,16 +335,16 @@
    example-model  [loaded]  ctx=32768
    ```
 
-   把你要用的那個名字，填回 `profiles.json` 裡 `home` 的 `"model"`（`notepad profiles.json` 改完存檔）。然後確認連得上：
+   把你要用的那個名字，填回 `profiles.json` 裡 `lmstudio` 的 `"model"`（`notepad profiles.json` 改完存檔）。然後確認連得上：
 
    ```powershell
-   ntu_easy_llm probe --config profiles.json --profile home
+   ntu_easy_llm probe --config profiles.json --profile lmstudio
    ```
 
    成功會印出 `ok` 開頭的一行，例如 `ok (0.05s); 1 model(s) listed`（秒數和數量每台不同）。
 4. **不是這樣怎麼辦**：
    - `failed [connection]` 開頭，或一行紅字的連線錯誤：LM Studio 的伺服器沒開，或埠號不對。對照 LM Studio 畫面上的網址改 `base_url`。
-   - `config error: no profile named 'home'`：設定檔裡沒有叫 `home` 的組，`--profile` 後面要寫設定檔裡真的有的名字。
+   - `config error: no profile named 'lmstudio'`：設定檔裡沒有叫 `lmstudio` 的組，`--profile` 後面要寫設定檔裡真的有的名字。
 
 ### 步驟 8：（API 金鑰）把金鑰放進環境變數
 
@@ -297,10 +370,10 @@
    llmop client profiles
    ```
 
-3. **會看到什麼**：每行一個設定檔，第一欄是名字，例如：
+3. **會看到什麼**：每行一個 LLOP 設定檔，第一欄是名字，第二欄是明文（`plain`）或加密（`e2e`），例如：
 
    ```
-   home	plain	ready	https://example.trycloudflare.com/…	釘選 0
+   tiny	plain	ready	https://example.trycloudflare.com/…	釘選 0
    ```
 
    第一欄的名字要跟 `profiles.json` 裡 `friend` 的 `"llop_profile"` 一樣。
@@ -331,10 +404,10 @@
 ### 步驟 11：問一句話
 
 1. **做什麼**：用設定檔裡的一組，真的送一句話。（API 金鑰與訂閱會用掉一點額度。）
-2. **打什麼**（`home` 換成你要用的那組名字）：
+2. **打什麼**（`lmstudio` 換成你要用的那組名字）：
 
    ```powershell
-   ntu_easy_llm chat --config profiles.json --profile home "用一句話介紹你自己"
+   ntu_easy_llm chat --config profiles.json --profile lmstudio "用一句話介紹你自己"
    ```
 
 3. **會看到什麼**：等一下，印出模型的回答，然後回到提示字。想邊收邊印，在最後加 `--stream`。
@@ -345,8 +418,8 @@
    | `error [auth_invalid]: profile openai: environment variable MY_OPENAI_KEY is not set` | 環境變數沒設 | 做步驟 8（同一個視窗） |
    | `config error: profiles.openai.api_key: a config may not contain the key itself — …` | 把金鑰寫進設定檔了 | 從設定檔刪掉，改用 `api_key_env` |
    | `config error: cannot read config file profiles.json: No such file or directory` | 不在對的資料夾 | 先 `cd $HOME\easyllm-demo` |
-   | `failed [bad_request] …: llop: profile_not_found: 找不到設定檔「home」。…`（probe 時） | LLOP 設定檔名稱對不上 | 做步驟 9 |
-   | `error [link_changed]: …` | LLOP 的 API 連結換了 | 向提供者拿新連結，`llmop client set-link --profile home <新連結>` |
+   | `failed [bad_request] …: llop: profile_not_found: 找不到設定檔「tiny」。…`（probe 時） | `llop_profile` 跟 LLOP 設定檔名稱對不上 | 做步驟 9 |
+   | `error [link_changed]: …` | LLOP 的 API 連結換了 | 向提供者拿新連結，`llmop client set-link --profile tiny <新連結>`（`tiny` 換成你的 LLOP 設定檔名稱） |
    | `error [quota_exhausted]: …` | 額度用完 | 等額度回來，或設定備援（步驟 12） |
 
    結束碼：0＝成功、1＝供應商或網路失敗、2＝設定有問題。
@@ -359,16 +432,47 @@
 1. **做什麼**：在設定檔加一段 `chains`。有兩種模式：
    - `auto`：自動換，並告訴你換成誰。
    - `ask`：不自動換，停下來讓你的程式決定。
-2. **打什麼**：`notepad profiles.json`，在 `"profiles": {…}` 那一大段的**結尾大括號後面**加一個逗號，再貼上：
+2. **打什麼**：`notepad profiles.json`，把內容**整份換成**下面這份（這是範本五加上兩條 chain：`backup` 是 auto、`careful` 是 ask；用不到的 profile 留著沒關係，只有被叫到才會用），存檔：
 
    ```json
+   {
+     "version": 1,
+     "default": "lmstudio",
+     "profiles": {
+       "lmstudio": {
+         "source": "local/lmstudio",
+         "base_url": "http://127.0.0.1:1234/v1",
+         "model": "example-model"
+       },
+       "openai": {
+         "source": "remote/api_key/openai",
+         "api_key_env": "MY_OPENAI_KEY",
+         "model": "gpt-4.1-mini"
+       },
+       "friend": {
+         "source": "remote/api_key/llop",
+         "llop_profile": "tiny",
+         "model": "any"
+       },
+       "claude_sub": {
+         "source": "remote/subscription/claude",
+         "model": "haiku"
+       }
+     },
      "chains": {
-       "backup": {"members": ["openai", "home"], "waterfall": {"mode": "auto"}},
-       "careful": {"members": ["openai", "home"], "waterfall": {"mode": "ask"}}
+       "backup": {
+         "members": ["openai", "lmstudio"],
+         "waterfall": {"mode": "auto"}
+       },
+       "careful": {
+         "members": ["openai", "lmstudio"],
+         "waterfall": {"mode": "ask"}
+       }
      }
+   }
    ```
 
-   存檔後用 `--chain` 跑：
+   記得把 `1234`、`example-model`、`tiny` 這些照步驟 6 的表格改成你的。然後用 `--chain` 跑：
 
    ```powershell
    ntu_easy_llm chat --config profiles.json --chain backup "用一句話介紹你自己"
@@ -376,9 +480,9 @@
 
 3. **會看到什麼**：
    - 第一組正常：印出回答，下面一行 `[openai]`（是哪一組回答的）。
-   - 第一組不能用：印出回答，並多一行 `notice: 已改用 home（原因：金鑰失效）`，下一行 `[home]`。
+   - 第一組不能用：印出回答，並多一行 `notice: 已改用 lmstudio（原因：金鑰失效）`，下一行 `[lmstudio]`。
    - 用 `--chain careful`（`ask` 模式）時第一組不能用：不會換，印出
-     `error [auth_invalid]: openai: key invalid; fallback candidates: home`。在命令列只能看到這句；要「問過再換」，得在自己的程式裡處理（README 的「備援路由」有範例）。
+     `error [auth_invalid]: openai: key invalid; fallback candidates: lmstudio`。在命令列只能看到這句；要「問過再換」，得在自己的程式裡處理（README 的「備援路由」有範例）。
 4. **不是這樣怎麼辦**：
    - `config error: chains.backup.members: unknown profiles …`：`members` 裡的名字要跟 `profiles` 裡的一樣。
    - `config error: ids used for both a profile and a chain: …`：chain 的名字不能跟 profile 的名字重複。
@@ -406,7 +510,7 @@
 ```python
 from ntu_easy_llm import load_profiles
 
-llm = load_profiles("profiles.json").adapter("home")
+llm = load_profiles("profiles.json").adapter("lmstudio")   # 換成你的 profile 名字
 print(llm.chat([{"role": "user", "content": "你好"}]).text)
 ```
 
