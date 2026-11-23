@@ -730,7 +730,28 @@ except FallbackRequired as e:
 **LLOP**（`remote/api_key/llop`，本地模型發布服務）：要裝 `ntu_easy_llm[llop]`。LLOP 還沒上 PyPI，目前從 LLOP 的 GitHub release wheel 安裝（`pip install "<wheel 檔>[sdk]"`），或從原始碼 `pip install -e "<LLOP 的資料夾>[sdk]"`；沒裝這個 extra 的人完全不受影響（`import ntu_easy_llm` 不會載入 `llmop`）。
 設定只寫 `"llop_profile": "<SDK 設定檔名>"`；API key、簽章私鑰、釘選都在 LLOP SDK 自己的設定檔裡（先在終端機跑 `llmop client enroll …`）。API 連結換了會丟 `kind == "link_changed"`，向服務提供者拿新連結後 `llmop client set-link`。
 
-**訂閱來源**（`remote/subscription/claude`、`github_copilot`、`chatgpt`）：用這台電腦已登入的官方 CLI，另外安裝對應的登入套件（`claude-subscription`、`github_copilot_login`、`chatgpt_login`）。**只給本人使用**（用的是你個人的訂閱，不要拿來服務別人）。只能文字進出：帶 `tools` 呼叫會丟 `tools_unsupported`，不會默默忽略。
+**訂閱來源**（`remote/subscription/claude`、`github_copilot`、`chatgpt`）：用這台電腦已登入的官方 CLI，另外安裝對應的登入套件（`claude-subscription`、`github_copilot_login`、`chatgpt_login`）。**只給本人使用**（用的是你個人的訂閱；見下方「訂閱登入來源的使用聲明」）。只能文字進出：帶 `tools` 呼叫會丟 `tools_unsupported`，不會默默忽略。
+
+### 訂閱登入來源的使用聲明
+
+訂閱來源經 ClaudeLogin、GithubCopilotLogin、ChatGPTLogin 這三個套件，呼叫**你自己在這台電腦上已登入的官方 CLI**，用的是你個人的訂閱帳號。
+
+1. **不推薦拿個人訂閱服務別人**：不建議把個人訂閱拿來服務其他人、轉售、共用或分享出去——例如經 LLOP 之類的通道提供給別人、放進給訪客使用的 AI 功能，或放進給別人用的備援鏈。目錄上這幾個來源標「只給本人使用」就是這個意思。
+2. **條款由你自己確認**：每個訂閱服務（例如 Claude、GitHub Copilot、ChatGPT）都有自己的使用條款與政策。某種用法是否被允許，請你自己閱讀並理解該服務的條款，並自行負責。
+3. **本專案只提供技術介面**：本專案及其作者、維護者不代表任何服務商，與你如何使用自己的訂閱無關，也不對違反服務條款所造成的後果（例如帳號被限制或停用）負責。函式庫技術上不阻擋任何用法，但「沒被擋」不代表服務商允許。
+4. 這段是對 MIT 授權中「按現狀提供、不附任何擔保」的補充說明，不是額外的授權條件。
+
+<details>
+<summary>English version</summary>
+
+**Usage notice for subscription sources.** The subscription sources call, through the ClaudeLogin, GithubCopilotLogin and ChatGPTLogin packages, the official CLI that **you** have signed in to on your own machine, using your personal subscription.
+
+1. **Not recommended for serving others.** We do not recommend using a personal subscription to serve other people, or to resell, pool or share access — for example through a relay channel such as LLOP, an AI feature offered to guests, or a fallback chain used by other people. This is what the "for personal use only" label in the catalog means.
+2. **You check the terms.** Each subscription service (for example Claude, GitHub Copilot, ChatGPT) has its own terms of use and policies. Whether a particular use is allowed is for you to read, understand and take responsibility for.
+3. **Technical interface only.** This project and its authors and maintainers do not represent any service provider, are not involved in how you use your subscription, and are not responsible for the consequences of violating a provider's terms (such as account restrictions or suspension). The library does not technically block any use; not being blocked does not mean a use is permitted by the provider.
+4. This notice supplements the "as is, without warranty" clause of the MIT License; it is not an additional license condition.
+
+</details>
 
 ---
 

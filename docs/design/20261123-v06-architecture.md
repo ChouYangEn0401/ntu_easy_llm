@@ -499,6 +499,7 @@ ProfileSet.router(name=None, *, http=None, **kw) -> Router      # chain 或單�
 - `LoginError.kind` → `ErrorKind`：`quota_exhausted`→QUOTA_EXHAUSTED（帶 `retry_after`）、`auth_invalid`→AUTH_INVALID、`timeout`→TIMEOUT、`not_installed`→CONNECTION、`bad_request`／`unsupported`→BAD_REQUEST（提示太長→CONTEXT_TOO_LONG）、其他→UNKNOWN。
 - `check()`：沒裝套件 → 「要先安裝 <pip 名稱> 套件」。有沒有登入要真的呼叫才知道：`probe(send=False)` 只確認找得到官方 CLI，`probe(send=True)` 送一句；沒登入時呼叫會得到 `AUTH_INVALID`。
 - 目錄上這三個來源的說明標「只給本人使用」（用的是這台電腦上個人的訂閱）；函式庫不實作擋人的邏輯，要不要開給別人由上層應用決定。
+- 使用聲明（不推薦拿個人訂閱服務別人、條款由使用者自己確認、本專案只提供技術介面）：見 [README 的「訂閱登入來源的使用聲明」](../../README.md#訂閱登入來源的使用聲明)。
 
 ## 4. 相容與版本
 
