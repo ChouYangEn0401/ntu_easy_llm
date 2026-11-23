@@ -1,12 +1,20 @@
 """Subscription adapters: an official CLI already signed in on this machine (``remote/subscription/*``).
 
-========================================  ========================  ==========================
-source                                    login package (import)    pip name
-========================================  ========================  ==========================
-``remote/subscription/claude``            ``claude_subscription``   ``claude-subscription``
-``remote/subscription/github_copilot``    ``github_copilot_login``  ``github_copilot_login``
-``remote/subscription/chatgpt``           ``chatgpt_login``         ``chatgpt_login``
-========================================  ========================  ==========================
+========================================  ========================  ==========================  ==========================
+source                                    login package (import)    pip name                    install
+========================================  ========================  ==========================  ==========================
+``remote/subscription/claude``            ``claude_subscription``   ``claude-subscription``     ``ntu_easy_llm[claude-login]``
+``remote/subscription/github_copilot``    ``github_copilot_login``  ``github_copilot_login``    ``ntu_easy_llm[copilot]``
+``remote/subscription/chatgpt``           ``chatgpt_login``         ``chatgpt_login``           ``ntu_easy_llm[chatgpt]``
+========================================  ========================  ==========================  ==========================
+
+``ntu_easy_llm[subscriptions]`` installs all three. The extras pin each login
+package's GitHub release wheel by URL (they are not on PyPI; do not
+``pip install`` the bare names).
+
+The login packages are separate projects and stay that way: each wraps an
+official CLI and keeps that CLI's own MCP / agent features. This library only
+uses their ``ask()``, so whatever they add later does not change what happens here.
 
 These sources use **your own** subscription through the vendor's own CLI.
 They are meant for the person who signed in on this machine; do not put them
@@ -37,7 +45,8 @@ from ..profiles import Profile
 from ..types import as_messages, normalize_finish
 from .base import Capabilities, ModelInfo, ProbeResult
 
-__all__ = ["SubscriptionAdapter", "PACKAGES", "kind_from_login", "claude", "github_copilot", "chatgpt"]
+__all__ = ["SubscriptionAdapter", "PACKAGES", "EXTRAS", "TOOLS_UNSUPPORTED_MESSAGE", "kind_from_login",
+           "claude", "github_copilot", "chatgpt"]
 
 #: provider -> (import name, pip name, CLI finder function in the package)
 PACKAGES: dict[str, tuple[str, str, str]] = {
@@ -45,6 +54,14 @@ PACKAGES: dict[str, tuple[str, str, str]] = {
     "github_copilot": ("github_copilot_login", "github_copilot_login", "find_copilot"),
     "chatgpt": ("chatgpt_login", "chatgpt_login", "find_codex"),
 }
+
+#: provider -> the ntu_easy_llm extra that installs its login package (``subscriptions`` installs all three)
+EXTRAS: dict[str, str] = {"claude": "claude-login", "github_copilot": "copilot", "chatgpt": "chatgpt"}
+
+#: what a call with ``tools`` gets (kind ``tools_unsupported``)
+TOOLS_UNSUPPORTED_MESSAGE = ("這個來源只能聊天，不支援工具（MCP）；要用工具請改用 API 金鑰或本地來源 / "
+                             "this source is chat only and does not support tools (MCP); "
+                             "use an API-key or local source for tools")
 
 #: LoginError.kind -> ErrorKind
 _LOGIN_KIND: dict[str, ErrorKind] = {
@@ -67,7 +84,9 @@ def kind_from_login(exc: BaseException) -> ErrorKind:
 
 def _install_hint(provider: str) -> str:
     _, pip_name, _ = PACKAGES[provider]
-    return f"要先安裝 {pip_name} 套件 / install the {pip_name} package first"
+    extra = EXTRAS[provider]
+    return (f"要先安裝 ntu_easy_llm[{extra}]（{pip_name} 套件）/ "
+            f"install ntu_easy_llm[{extra}] (the {pip_name} package) first")
 
 
 def _check_for(provider: str) -> Callable[[], tuple[bool, str]]:
@@ -121,7 +140,7 @@ class SubscriptionAdapter:
              on_delta: Callable[[str], None] | None = None) -> ChatReply:
         msgs = as_messages(messages)
         if [_tool(t) for t in (tools or [])]:
-            raise LLMError(f"{self.provider} subscription: tool calling is not supported (text only)",
+            raise LLMError(f"{self.provider} subscription: {TOOLS_UNSUPPORTED_MESSAGE}",
                            kind=ErrorKind.TOOLS_UNSUPPORTED, profile_id=self.profile.id)
         if any(m.images for m in msgs):
             raise LLMError(f"{self.provider} subscription: images are not supported (text only)",

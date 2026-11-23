@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0a3] - 2026-11-23
+
+### Added
+- Extras for the subscription login packages: `claude-login` (ClaudeLogin 0.5.1), `copilot`
+  (GithubCopilotLogin 0.2.0), `chatgpt` (ChatGPTLogin 0.2.0) and `subscriptions` (all three). Like
+  `[llop]` they pin each package's GitHub release wheel by direct URL, never a bare name. The login
+  packages stay separate projects (each keeps its own CLI's MCP / agent features); this library only
+  calls their `ask()`.
+- `SourceNode.tools` in the catalog (`True` / `False` = chat only / `None` = depends on the server and
+  model), included in `to_dict()` / `catalog --json`; `ntu_easy_llm catalog` prints it on every source.
+  `catalog.tools_label()` gives the short text. Subscription sources also carry their `extra`.
+- `adapters.subscription.EXTRAS` and `TOOLS_UNSUPPORTED_MESSAGE`.
+
+### Changed
+- A subscription source called with `tools` now fails (`tools_unsupported`, as before) with a plain
+  bilingual sentence: this source is chat only, no tools (MCP); use an API-key or local source for tools.
+- The catalog description of the subscription sources adds "chat only, no tools (MCP)".
+- The "install first" hint for a missing login package names the `ntu_easy_llm[...]` extra instead of
+  only the bare package name.
+- README: the source list is a table with a "tools (MCP)" column; install commands for the new extras;
+  a note on how the login packages relate to this library.
+
 ## [0.6.0a2] - 2026-11-23
 
 ### Security

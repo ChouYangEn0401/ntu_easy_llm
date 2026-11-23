@@ -91,8 +91,17 @@ reply = llm.chat([{"role": "user", "content": "你好"}], max_tokens=200, stop=[
 reply.text, reply.finish, reply.usage        # finish："stop"｜"length"｜"thinking"｜"tool_calls"
 ```
 
-- 來源：`local/{lmstudio, ollama, vllm, llamacpp, openai_compatible}`、`remote/api_key/{openai, anthropic, gemini, openai_compatible}`。
-  `ntu_easy_llm catalog` 列出全部，與這台能不能用。
+- 來源總表（`ntu_easy_llm catalog` 列出全部、這台能不能用、能不能用工具）：
+
+  | 來源 | 路徑（`source`） | 另外要裝 | 工具（MCP） |
+  |---|---|---|---|
+  | 本地伺服器 | `local/{lmstudio, ollama, vllm, llamacpp, openai_compatible}` | — | 看伺服器與模型（`options.tools` 可指定） |
+  | API 金鑰 | `remote/api_key/{openai, anthropic, gemini}` | — | ✓ |
+  | API 金鑰（相容服務） | `remote/api_key/openai_compatible` | — | 看服務與模型 |
+  | LLOP | `remote/api_key/llop` | `ntu_easy_llm[llop]` | 看服務端的模型 |
+  | 訂閱登入 | `remote/subscription/{claude, github_copilot, chatgpt}` | `ntu_easy_llm[claude-login]`／`[copilot]`／`[chatgpt]`（三個一起：`[subscriptions]`） | **✗ 只能聊天** |
+
+  訂閱登入來源只有文字進出：帶 `tools` 呼叫會丟 `tools_unsupported`（「這個來源只能聊天，不支援工具（MCP）」），不會默默忽略；要用工具請改用 API 金鑰或本地來源。
 - 失敗一律是 `LLMError`，帶 `kind`（`quota_exhausted`、`auth_invalid`、`rate_limited`、`context_too_long`、`model_not_found`、`tools_unsupported`…）、
   `retry_after`（伺服器要你等幾秒）、`profile_id`。各家的差異與限制見架構文件第 5 節。
 - 本機與區網的網址不走系統 proxy（VPN／proxy 軟體不會把它吃掉）；遠端照系統設定。`options.proxy` 可以改成 `none`／`system`。
@@ -128,6 +137,9 @@ pip install ntu_easy_llm-<version>-py3-none-any.whl
 ```
 
 安裝後 import 不需要加 `src.` 前綴：`from ntu_easy_llm import ask_chatgpt`。
+
+選裝（extras，在檔名或套件名後面加 `[...]`）：`yaml`（YAML 設定檔）、`llop`（LLOP 來源）、
+`claude-login`／`copilot`／`chatgpt`／`subscriptions`（訂閱登入來源，只能聊天、沒有工具；見「備援路由、LLOP 與訂閱來源」）。
 
 ### 方式二 — 可編輯安裝（開發貢獻者）
 
@@ -730,7 +742,18 @@ except FallbackRequired as e:
 **LLOP**（`remote/api_key/llop`，本地模型發布服務）：要裝 `ntu_easy_llm[llop]`。LLOP 還沒上 PyPI，目前從 LLOP 的 GitHub release wheel 安裝（`pip install "<wheel 檔>[sdk]"`），或從原始碼 `pip install -e "<LLOP 的資料夾>[sdk]"`；沒裝這個 extra 的人完全不受影響（`import ntu_easy_llm` 不會載入 `llmop`）。
 設定只寫 `"llop_profile": "<SDK 設定檔名>"`；API key、簽章私鑰、釘選都在 LLOP SDK 自己的設定檔裡（先在終端機跑 `llmop client enroll …`）。API 連結換了會丟 `kind == "link_changed"`，向服務提供者拿新連結後 `llmop client set-link`。
 
-**訂閱來源**（`remote/subscription/claude`、`github_copilot`、`chatgpt`）：用這台電腦已登入的官方 CLI，另外安裝對應的登入套件（`claude-subscription`、`github_copilot_login`、`chatgpt_login`）。**只給本人使用**（用的是你個人的訂閱；見下方「訂閱登入來源的使用聲明」）。只能文字進出：帶 `tools` 呼叫會丟 `tools_unsupported`，不會默默忽略。
+**訂閱來源**（`remote/subscription/claude`、`github_copilot`、`chatgpt`）：用這台電腦已登入的官方 CLI，另外安裝對應的登入套件。**只給本人使用**（用的是你個人的訂閱；見下方「訂閱登入來源的使用聲明」）。**只能聊天、沒有工具（MCP）**：帶 `tools` 呼叫會丟 `tools_unsupported`，不會默默忽略。
+
+| 來源 | 登入套件 | 安裝 |
+|---|---|---|
+| `remote/subscription/claude` | ClaudeLogin（`claude-subscription`） | `pip install "ntu_easy_llm[claude-login]"` |
+| `remote/subscription/github_copilot` | GithubCopilotLogin（`github_copilot_login`） | `pip install "ntu_easy_llm[copilot]"` |
+| `remote/subscription/chatgpt` | ChatGPTLogin（`chatgpt_login`） | `pip install "ntu_easy_llm[chatgpt]"` |
+| 三個都要 | | `pip install "ntu_easy_llm[subscriptions]"` |
+
+從 wheel 檔安裝時寫成 `pip install "ntu_easy_llm-<version>-py3-none-any.whl[subscriptions]"`。這幾個 extra 跟 `[llop]` 一樣，用各套件 GitHub Release 的 wheel 網址釘住版本；它們不在 PyPI 上，**不要直接 `pip install` 套件名**（同名的 PyPI 套件可能是別人註冊的）。安裝之後還要在這台電腦裝好官方 CLI 並登入。
+
+**這三個登入套件是獨立的專案**：各自包一個官方 CLI，也各自保有那個 CLI 本身的 MCP／agent 能力，照自己的節奏發展；ntu_easy_llm 不把它們的程式碼收進來，只呼叫它們的 `ask()`（文字進、文字出）。所以經 ntu_easy_llm 使用時沒有工具（MCP）；它們往後加的功能也不影響這邊。需要那些 CLI 的工具或 agent 能力，請直接用那幾個套件或官方 CLI。
 
 ### 訂閱登入來源的使用聲明
 

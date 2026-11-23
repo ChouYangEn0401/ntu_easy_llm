@@ -15,6 +15,9 @@ Every leaf's ``path`` is exactly the ``source`` of a
 step asks for, ``detail_fields`` the optional tuning step. ``available`` says
 whether an adapter for it is installed and usable *on this machine* (with the
 reason when not), so a UI can grey a choice out instead of hiding it.
+``tools`` says whether the source can do tool calling (MCP): ``True`` yes,
+``False`` never (the subscription sources are chat only), ``None`` it depends
+on the server and model.
 
 Building the catalog never imports a provider SDK or an optional extra.
 """
@@ -24,7 +27,8 @@ import importlib.util
 from dataclasses import dataclass, replace
 from typing import Any, Iterator
 
-__all__ = ["FieldSpec", "SourceNode", "catalog", "find", "leaves", "list_llop_profiles", "FIELD_KINDS"]
+__all__ = ["FieldSpec", "SourceNode", "catalog", "find", "leaves", "list_llop_profiles", "tools_label",
+           "FIELD_KINDS"]
 
 #: ``FieldSpec.kind`` values.
 #: ``secret`` fields are collected by the UI and stored by the *caller* (vault / environment);
@@ -63,6 +67,7 @@ class SourceNode:
     unavailable_reason: str = ""
     description: str = ""
     extra: str = ""                   # pip extra this source needs, e.g. "llop"
+    tools: bool | None = None         # tool calling (MCP): True / False (chat only) / None (depends on the model)
 
     @property
     def is_leaf(self) -> bool:
@@ -94,6 +99,7 @@ class SourceNode:
         if self.children:
             d["children"] = [c.to_dict() for c in self.children]
         else:
+            d["tools"] = self.tools
             d["fields"] = [f.to_dict() for f in self.fields]
             d["detail_fields"] = [f.to_dict() for f in self.detail_fields]
         return d
@@ -114,7 +120,9 @@ _T: dict[str, dict[str, str]] = {
         "remote/api_key/llop": "LLOP（本地模型發布服務）",
         "remote/subscription/claude": "Claude（訂閱）", "remote/subscription/github_copilot": "GitHub Copilot（訂閱）",
         "remote/subscription/chatgpt": "ChatGPT（訂閱）",
-        "desc.subscription": "只給本人使用：用這台電腦上你自己登入的訂閱（官方 CLI），不要拿來服務別人。",
+        "desc.subscription": "只給本人使用：用這台電腦上你自己登入的訂閱（官方 CLI），不要拿來服務別人。"
+                             "只能聊天（文字進出），不支援工具（MCP）。",
+        "tools.yes": "工具 ✓", "tools.maybe": "工具：看伺服器與模型", "tools.no": "工具 ✗ 只能聊天",
         "f.base_url": "伺服器網址", "f.model": "模型", "f.secret": "API 金鑰",
         "f.secret.help": "金鑰由你的程式存進保管箱或環境變數；設定檔裡只寫引用（api_key_env 或 secret）。",
         "f.llop_profile": "LLOP 設定檔",
@@ -139,7 +147,9 @@ _T: dict[str, dict[str, str]] = {
         "remote/subscription/github_copilot": "GitHub Copilot (subscription)",
         "remote/subscription/chatgpt": "ChatGPT (subscription)",
         "desc.subscription": "For your own use only: your personal subscription signed in on this machine "
-                             "(official CLI); do not use it to serve other people.",
+                             "(official CLI); do not use it to serve other people. "
+                             "Chat only (text in and out): no tools (MCP).",
+        "tools.yes": "tools ✓", "tools.maybe": "tools: depends on server and model", "tools.no": "tools ✗ chat only",
         "f.base_url": "Server URL", "f.model": "Model", "f.secret": "API key",
         "f.secret.help": "Your program stores the key in a vault or environment variable; "
                          "the config holds only a reference (api_key_env or secret).",
@@ -165,7 +175,18 @@ _LOCAL_URLS = {
 }
 _API_KEY = ("openai", "anthropic", "gemini", "openai_compatible", "llop")
 _SUBSCRIPTION = ("claude", "github_copilot", "chatgpt")
+# subscription provider -> pip extra (same as adapters.subscription.EXTRAS; a test keeps them in step).
+# Shown only: whether the source is usable is the adapter's own check (its reason names the extra), so an
+# adapter registered for the same path by someone else is not blocked by a missing login package.
+_SUBSCRIPTION_EXTRA = {"claude": "claude-login", "github_copilot": "copilot", "chatgpt": "chatgpt"}
 _EXTRA_MODULE = {"llop": "llmop"}       # pip extra -> top-level module it installs
+# sources that always support tool calling; subscription sources never do; the rest depend on the model
+_TOOLS_YES = ("remote/api_key/openai", "remote/api_key/anthropic", "remote/api_key/gemini")
+
+
+def tools_label(tools: bool | None, *, locale: str = "zh-TW") -> str:
+    """Short text for :attr:`SourceNode.tools` (what the CLI prints)."""
+    return _t(locale, "tools.yes" if tools else "tools.maybe" if tools is None else "tools.no")
 
 
 def _t(locale: str, key: str, **kw: Any) -> str:
@@ -174,7 +195,7 @@ def _t(locale: str, key: str, **kw: Any) -> str:
 
 
 def _availability(path: str, extra: str, locale: str) -> tuple[bool, str]:
-    if extra:
+    if extra in _EXTRA_MODULE:
         module = _EXTRA_MODULE.get(extra, extra)
         if importlib.util.find_spec(module) is None:     # top-level find_spec does not import the module
             return False, _t(locale, "na.extra", extra=extra)
@@ -215,8 +236,9 @@ def _secret(locale: str, *, required: bool) -> FieldSpec:
 def _leaf(path: str, locale: str, fields: tuple[FieldSpec, ...], details: tuple[FieldSpec, ...],
           extra: str = "") -> SourceNode:
     ok, reason = _availability(path, extra, locale)
+    tools = True if path in _TOOLS_YES else False if path.startswith("remote/subscription/") else None
     return SourceNode(path=path, label=_t(locale, path), fields=fields, detail_fields=details,
-                      available=ok, unavailable_reason="" if ok else reason, extra=extra)
+                      available=ok, unavailable_reason="" if ok else reason, extra=extra, tools=tools)
 
 
 def _group(path: str, locale: str, children: list[SourceNode]) -> SourceNode:
@@ -253,7 +275,8 @@ def catalog(*, locale: str = "zh-TW") -> SourceNode:
 
     sub_children = [
         replace(_leaf(f"remote/subscription/{p}", locale, (_model(locale, required=False),),
-                      _details(locale, local=False, subscription=True, effort=p in ("claude", "chatgpt"))),
+                      _details(locale, local=False, subscription=True, effort=p in ("claude", "chatgpt")),
+                      extra=_SUBSCRIPTION_EXTRA[p]),
                 description=_t(locale, "desc.subscription"))
         for p in _SUBSCRIPTION
     ]
