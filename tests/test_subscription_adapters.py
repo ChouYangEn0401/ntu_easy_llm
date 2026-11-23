@@ -10,7 +10,7 @@ import types
 import pytest
 
 from ntu_easy_llm.adapters import FakeAdapter, adapter_status, get_adapter
-from ntu_easy_llm.adapters.subscription import PACKAGES
+from ntu_easy_llm.adapters.subscription import EXTRAS, PACKAGES, TOOLS_UNSUPPORTED_MESSAGE
 from ntu_easy_llm.agent import LLMError
 from ntu_easy_llm.catalog import find
 from ntu_easy_llm.errors import AdapterNotFound, ErrorKind
@@ -99,12 +99,13 @@ def test_not_installed_check(monkeypatch, p):
     real = importlib.util.find_spec
     monkeypatch.delitem(sys.modules, name, raising=False)
     monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: None if n == name else real(n, *a))
+    extra = EXTRAS[p]
     ok, reason = adapter_status(f"remote/subscription/{p}")
-    assert not ok and pip_name in reason
+    assert not ok and pip_name in reason and f"ntu_easy_llm[{extra}]" in reason
     with pytest.raises(AdapterNotFound):
         get_adapter(sub_profile(p))
     node = find(f"remote/subscription/{p}")
-    assert not node.available and pip_name in node.unavailable_reason
+    assert not node.available and f"ntu_easy_llm[{extra}]" in node.unavailable_reason and node.extra == extra
 
 
 @pytest.mark.parametrize("p", PROVIDERS)
@@ -112,6 +113,41 @@ def test_catalog_marks_own_use_only(logins, p):
     node = find(f"remote/subscription/{p}")
     assert node.available and "只給本人使用" in node.description
     assert "own use only" in find(f"remote/subscription/{p}", locale="en").description
+
+
+@pytest.mark.parametrize("p", PROVIDERS)
+def test_catalog_marks_no_tools(logins, p):
+    node = find(f"remote/subscription/{p}")
+    assert node.tools is False and node.extra == EXTRAS[p]
+    assert node.to_dict()["tools"] is False and node.to_dict()["extra"] == EXTRAS[p]
+    assert "不支援工具（MCP）" in node.description
+    assert "no tools (MCP)" in find(f"remote/subscription/{p}", locale="en").description
+
+
+def test_catalog_tools_column_for_other_sources():
+    from ntu_easy_llm.catalog import leaves
+    tools = {n.path: n.tools for n in leaves()}
+    assert tools["remote/api_key/openai"] is True and tools["remote/api_key/anthropic"] is True
+    assert tools["local/ollama"] is None and tools["remote/api_key/llop"] is None
+    assert [p for p, t in tools.items() if t is False] == [f"remote/subscription/{p}" for p in PROVIDERS]
+
+
+def test_cli_catalog_prints_chat_only(capsys):
+    from ntu_easy_llm.cli import main
+    assert main(["catalog"]) == 0
+    lines = {ln.split()[0]: ln for ln in capsys.readouterr().out.splitlines() if ln.strip()}
+    for p in PROVIDERS:
+        assert lines[f"remote/subscription/{p}"].endswith("[工具 ✗ 只能聊天]")
+    assert lines["remote/api_key/openai"].endswith("[工具 ✓]")
+    assert lines["local/ollama"].endswith("[工具：看伺服器與模型]")
+    assert main(["catalog", "--locale", "en"]) == 0
+    en = {ln.split()[0]: ln for ln in capsys.readouterr().out.splitlines() if ln.strip()}
+    assert en["remote/subscription/claude"].endswith("[tools ✗ chat only]")
+
+
+def test_catalog_extras_match_adapter():
+    from ntu_easy_llm import catalog as cat
+    assert cat._SUBSCRIPTION_EXTRA == EXTRAS
 
 
 @pytest.mark.parametrize("p", PROVIDERS)
@@ -132,6 +168,10 @@ def test_tools_are_rejected_not_dropped(logins, p):
     with pytest.raises(LLMError) as ei:
         a.chat([{"role": "user", "content": "hi"}], tools=[{"name": "f"}])
     assert ei.value.kind is ErrorKind.TOOLS_UNSUPPORTED and logins[p].calls == []
+    msg = str(ei.value)
+    assert TOOLS_UNSUPPORTED_MESSAGE in msg
+    assert "只能聊天" in msg and "工具（MCP）" in msg and "API 金鑰或本地來源" in msg
+    assert "chat only" in msg and "tools (MCP)" in msg and "API-key or local source" in msg
 
 
 def test_images_and_tool_messages_rejected(logins):

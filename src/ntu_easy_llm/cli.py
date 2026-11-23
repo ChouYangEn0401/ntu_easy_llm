@@ -74,7 +74,7 @@ def _adapter(args: argparse.Namespace) -> Any:
 
 
 def _cmd_catalog(args: argparse.Namespace) -> int:
-    from .catalog import catalog
+    from .catalog import catalog, tools_label
     root = catalog(locale=args.locale)
     if args.json:
         _out(json.dumps(root.to_dict(), ensure_ascii=False, indent=2))
@@ -87,6 +87,7 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
             line = f"{'  ' * (depth - 1)}{node.path}  {node.label}"
             if node.is_leaf:
                 line += f"  [{yes}]" if node.available else f"  [{no}: {node.unavailable_reason}]"
+                line += f"  [{tools_label(node.tools, locale='en' if en else 'zh-TW')}]"
             _out(line)
         for child in node.children:
             show(child, depth + 1)

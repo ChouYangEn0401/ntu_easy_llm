@@ -56,6 +56,24 @@ yaml = [
 llop = [
     "localllm-outsider-provider[sdk] @ https://github.com/ChouYangEn0401/LocalLLMOutsiderProvider/releases/download/v0.3.0a3/localllm_outsider_provider-0.3.0a3-py3-none-any.whl",
 ]
+# remote/subscription/* sources: the login packages are separate projects (each wraps an official CLI and keeps
+# its own MCP / agent features); this library only calls their ask(), text in and out, no tools. Not on PyPI:
+# the official GitHub release wheels by direct URL, never a bare name.
+claude-login = [
+    "claude-subscription @ https://github.com/ChouYangEn0401/ClaudeLogin/releases/download/v0.5.1/claude_subscription-0.5.1-py3-none-any.whl",
+]
+copilot = [
+    "github-copilot-login @ https://github.com/ChouYangEn0401/GithubCopilotLogin/releases/download/v0.2.0/github_copilot_login-0.2.0-py3-none-any.whl",
+]
+chatgpt = [
+    "chatgpt-login @ https://github.com/ChouYangEn0401/ChatGPTLogin/releases/download/v0.2.0/chatgpt_login-0.2.0-py3-none-any.whl",
+]
+# all three subscription login packages
+subscriptions = [
+    "claude-subscription @ https://github.com/ChouYangEn0401/ClaudeLogin/releases/download/v0.5.1/claude_subscription-0.5.1-py3-none-any.whl",
+    "github-copilot-login @ https://github.com/ChouYangEn0401/GithubCopilotLogin/releases/download/v0.2.0/github_copilot_login-0.2.0-py3-none-any.whl",
+    "chatgpt-login @ https://github.com/ChouYangEn0401/ChatGPTLogin/releases/download/v0.2.0/chatgpt_login-0.2.0-py3-none-any.whl",
+]
 
 [project.scripts]
 # 搭配 cli 指令使用 顯示版本
