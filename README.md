@@ -1,5 +1,7 @@
 # ntu_easy_llm
 
+第一次用？看 [docs/TUTORIAL.md](docs/TUTORIAL.md)
+
 > **v0.5.0** · Python 3.11+
 
 針對 **ChatGPT**、**Gemini**、**Anthropic Claude** 三大 LLM 服務的輕量 Python 封裝套件。
